@@ -1,9 +1,0 @@
-#pragma once
-
-#define SERVER_IVPOSITION 0
-#define SERVER_PORT 8000
-
-#define CLIENT_IVPOSITION 1
-#define CLIENT_PORT 8001
-
-#define IVSHMEM_DEV_FILESIZE (1024 * 1024 * 1024)

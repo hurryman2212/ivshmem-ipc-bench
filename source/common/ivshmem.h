@@ -19,4 +19,8 @@ enum usernet_ivshmem_ioctl_cmd {
   IOCTL_WAIT = 3
 };
 
+void intr_wait(int fd, int busy_waiting, uint16_t src_port);
+void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
+                 uint16_t dest_port);
+
 #endif /* IPC_BENCH_IVSHMEM_H */
