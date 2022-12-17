@@ -1,0 +1,20 @@
+*
+!.gitignore
+
+# C
+!*.c
+!*.h
+
+# C++
+!*.cc
+!*.cpp
+!*.cxx
+!*.hh
+!*.hpp
+!*.hxx
+
+# CMake
+!CMakeLists.txt
+
+# Subdirectories
+!**/
