@@ -39,7 +39,7 @@ void communicate(int sockfd, struct Arguments *args, int busy_waiting,
     do {
       ret = send(sockfd, buffer + (args->size - this_size), this_size, 0);
       if (ret < 0) {
-        if (((busy_waiting && (errno == EAGAIN)) && (errno != EINTR)))
+        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("send()");
@@ -53,7 +53,7 @@ void communicate(int sockfd, struct Arguments *args, int busy_waiting,
     do {
       ret = recv(sockfd, buffer + (args->size - this_size), this_size, 0);
       if (ret < 0) {
-        if (((busy_waiting && (errno == EAGAIN)) && (errno != EINTR)))
+        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("recv()");
@@ -176,11 +176,18 @@ int main(int argc, char *argv[]) {
 
   struct sockaddr_in client_addr = {0};
   socklen_t socklen = sizeof(client_addr);
-  int client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
-  if (client_fd < 0) {
-    perror("accept()");
-    exit(EXIT_FAILURE);
-  }
+  int client_fd;
+  do {
+    client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
+    if (client_fd < 0) {
+      if (((busy_waiting && (errno == EAGAIN)) || (errno == EINTR)))
+        continue;
+      else {
+        perror("accept()");
+        exit(EXIT_FAILURE);
+      }
+    }
+  } while (client_fd < 0);
 
   communicate(client_fd, &args, busy_waiting, debug);
 
