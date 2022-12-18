@@ -98,8 +98,9 @@ int main(int argc, char *argv[]) {
   }
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
 
-  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
-                             MAP_SHARED, ivshmem_fd, 4096);
+  void *shared_memory =
+      mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, ivshmem_fd,
+           USERNET_IVSHMEM_DEVM_START);
   if (shared_memory == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);
