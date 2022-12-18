@@ -23,7 +23,9 @@ find_package(PkgConfig REQUIRED)
 
 add_subdirectory(common)
 add_subdirectory(shm)
-add_subdirectory(tcp)
 
+add_subdirectory(socket-tcp)
+
+add_subdirectory(ivshmem-uio)
 add_subdirectory(ivshmem-usernet)
 add_subdirectory(ivshmem-usernet-shm)

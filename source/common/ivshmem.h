@@ -15,12 +15,16 @@ struct ivshmem_reg {
 
 enum usernet_ivshmem_ioctl_cmd {
   IOCTL_CLEAR = 0,
-  IOCTL_RING = 1,
-  IOCTL_WAIT = 3
+  IOCTL_GETSIZE = 1,
+  IOCTL_RING = 3,
+  IOCTL_WAIT = 4
 };
+#define USERNET_IVSHMEM_DEVM_START 4096
 
-void intr_wait(int fd, int busy_waiting, uint16_t src_port);
+void intr_wait(int fd, int busy_waiting, uint16_t src_port, int debug);
 void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
-                 uint16_t dest_port);
+                 uint16_t dest_port, int debug);
+
+void uio_wait(int fd, int busy_waiting, int debug);
 
 #endif /* IPC_BENCH_IVSHMEM_H */
