@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +10,6 @@
 #include <sys/socket.h>
 
 #include "common/common.h"
-#include "common/sockets.h"
 
 void communicate(int sockfd, struct Arguments *args, int busy_waiting,
                  int debug) {
@@ -34,20 +34,38 @@ void communicate(int sockfd, struct Arguments *args, int busy_waiting,
         }
       }
     }
+    size_t this_size = args->size;
+    int ret;
+    do {
+      ret = send(sockfd, buffer + (args->size - this_size), this_size, 0);
+      if (ret < 0) {
+        if (((busy_waiting && (errno == EAGAIN)) && (errno != EINTR)))
+          continue;
+        else {
+          perror("send()");
+          exit(EXIT_FAILURE);
+        }
+      }
+      this_size -= ret;
+    } while (this_size);
 
-    if (send(sockfd, buffer, args->size, 0) < 0) {
-      perror("send()");
-      exit(EXIT_FAILURE);
-    }
-
-    if (receive(sockfd, buffer, args->size, busy_waiting) < 0) {
-      perror("receive()");
-      exit(EXIT_FAILURE);
-    }
+    this_size = args->size;
+    do {
+      ret = recv(sockfd, buffer + (args->size - this_size), this_size, 0);
+      if (ret < 0) {
+        if (((busy_waiting && (errno == EAGAIN)) && (errno != EINTR)))
+          continue;
+        else {
+          perror("recv()");
+          exit(EXIT_FAILURE);
+        }
+      }
+      this_size -= ret;
+    } while (this_size);
     if (debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after receive()!\n");
+          fprintf(stderr, "Validation failed after recv()!\n");
           exit(EXIT_FAILURE);
         }
       }
