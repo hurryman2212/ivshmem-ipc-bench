@@ -26,6 +26,8 @@ add_subdirectory(shm)
 
 add_subdirectory(socket-tcp)
 
-add_subdirectory(ivshmem-uio)
-add_subdirectory(ivshmem-usernet)
 add_subdirectory(ivshmem-usernet-shm)
+add_subdirectory(ivshmem-uio)
+add_subdirectory(socket-tcp-shm)
+
+add_subdirectory(ivshmem-usernet)

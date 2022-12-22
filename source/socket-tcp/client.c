@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
   args.count = count;
   args.size = size;
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0); // O_NONBLOCK?
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
     perror("socket()");
     exit(EXIT_FAILURE);

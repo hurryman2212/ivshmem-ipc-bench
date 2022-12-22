@@ -7,51 +7,25 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #include "common/common.h"
 
-void communicate(int sockfd, struct Arguments *args, int busy_waiting,
-                 int debug) {
+void communicate(int sockfd, void *shared_memory, struct Arguments *args,
+                 int busy_waiting, int debug) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
     exit(EXIT_FAILURE);
   }
 
-  struct Benchmarks bench;
-  setup_benchmarks(&bench);
-
-  for (int message = 0; message < args->count; ++message) {
-    bench.single_start = now();
-
-    memset(buffer, 0x55, args->size);
-    if (debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    size_t this_size = args->size;
-    int ret;
+  int ret;
+  uint8_t dummy_message = 0x00;
+  for (; args->count > 0; --args->count) {
     do {
-      ret = send(sockfd, buffer + (args->size - this_size), this_size, 0);
-      if (ret < 0) {
-        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
-          continue;
-        else {
-          perror("send()");
-          exit(EXIT_FAILURE);
-        }
-      }
-      this_size -= ret;
-    } while (this_size);
-
-    this_size = args->size;
-    do {
-      ret = recv(sockfd, buffer + (args->size - this_size), this_size, 0);
+      ret = recv(sockfd, &dummy_message, sizeof(dummy_message), 0);
       if (ret < 0) {
         if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
           continue;
@@ -60,44 +34,86 @@ void communicate(int sockfd, struct Arguments *args, int busy_waiting,
           exit(EXIT_FAILURE);
         }
       }
-      this_size -= ret;
-    } while (this_size);
+    } while (ret != sizeof(dummy_message));
+    memcpy(buffer, shared_memory, args->size);
     if (debug) {
       for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after recv()!\n");
+        if (((uint8_t *)buffer)[i] != 0x55) {
+          fprintf(stderr, "Validation failed after memcpy()!\n");
           exit(EXIT_FAILURE);
         }
       }
     }
 
-    benchmark(&bench);
+    memset(shared_memory, 0xAA, args->size);
+    if (debug) {
+      for (int i = 0; i < args->size; ++i) {
+        if (((uint8_t *)shared_memory)[i] != 0xAA) {
+          fprintf(stderr, "Validation failed after memset()!\n");
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    do {
+      ret = send(sockfd, &dummy_message, sizeof(dummy_message), 0);
+      if (ret < 0) {
+        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
+          continue;
+        else {
+          perror("send()");
+          exit(EXIT_FAILURE);
+        }
+      }
+    } while (ret != sizeof(dummy_message));
   }
-
-  evaluate(&bench, args);
 
   free(buffer);
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 8) {
+  if (argc != 11) {
     fprintf(stderr,
-            "usage: %s SERVER_PORT RCVBUF_SIZE SNDBUF_SIZE COUNT SIZE NONBLOCK "
-            "DEBUG\n",
+            "usage: %s IVSHMEM_MEMPATH IVSHMEM_MEM_OFFSET SERVER_IP "
+            "SERVER_PORT RCVBUF_SIZE SNDBUF_SIZE COUNT SIZE NONBLOCK DEBUG\n",
             argv[0]);
     exit(EXIT_FAILURE);
   }
-  uint16_t server_port = atoi(argv[1]);
-  size_t rcvbuf_size = atoi(argv[2]);
-  size_t sndbuf_size = atoi(argv[3]);
-  size_t count = atoi(argv[4]);
-  size_t size = atoi(argv[5]);
-  int busy_waiting = atoi(argv[6]);
-  int debug = atoi(argv[7]);
+  const char *ivshmem_mempath = argv[1];
+  size_t ivshmem_mem_offset = atoi(argv[2]);
+  const char *server_ip = argv[3];
+  uint16_t server_port = atoi(argv[4]);
+  size_t rcvbuf_size = atoi(argv[5]);
+  size_t sndbuf_size = atoi(argv[6]);
+  size_t count = atoi(argv[7]);
+  size_t size = atoi(argv[8]);
+  int busy_waiting = atoi(argv[9]);
+  int debug = atoi(argv[10]);
 
   struct Arguments args;
   args.count = count;
   args.size = size;
+
+  int ivshmem_memfd = open(ivshmem_mempath, O_RDWR | O_ASYNC | O_NONBLOCK);
+  if (ivshmem_memfd < 0) {
+    perror("open(ivshmem_memfd)");
+    exit(EXIT_FAILURE);
+  }
+
+  struct stat st;
+  if (stat(ivshmem_mempath, &st)) {
+    perror("stat()");
+    exit(EXIT_FAILURE);
+  }
+  size_t ivshmem_size = st.st_size;
+  fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
+
+  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
+                             MAP_SHARED, ivshmem_memfd, ivshmem_mem_offset);
+  if (shared_memory == MAP_FAILED) {
+    perror("mmap()");
+    exit(EXIT_FAILURE);
+  }
+  void *passed_memory = shared_memory + ivshmem_size - args.size;
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
@@ -107,12 +123,6 @@ int main(int argc, char *argv[]) {
 
   int optval;
   socklen_t optlen = sizeof(optval);
-
-  optval = 1;
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
-    perror("bind()");
-    exit(EXIT_FAILURE);
-  }
 
   if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
     perror("getsockopt(SO_RCVBUF)");
@@ -160,41 +170,25 @@ int main(int argc, char *argv[]) {
 
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_addr.sin_addr.s_addr = inet_addr(server_ip);
   server_addr.sin_port = htons(server_port);
-
-  if ((bind(sockfd, (const struct sockaddr *)&server_addr,
-            sizeof(server_addr))) != 0) {
-    perror("bind()");
-    exit(EXIT_FAILURE);
-  }
-
-  if ((listen(sockfd, 5)) != 0) {
-    perror("listen()");
-    exit(EXIT_FAILURE);
-  }
-
-  struct sockaddr_in client_addr = {0};
-  socklen_t socklen = sizeof(client_addr);
-  int client_fd;
+  int ret;
   do {
-    client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
-    if (client_fd < 0) {
-      if (((busy_waiting && (errno == EAGAIN)) || (errno == EINTR)))
+    ret = connect(sockfd, (const struct sockaddr *)&server_addr,
+                  sizeof(server_addr));
+    if (ret < 0) {
+      if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR) ||
+          (errno == EINPROGRESS) || (errno == EALREADY))
         continue;
       else {
-        perror("accept()");
+        perror("connect()");
         exit(EXIT_FAILURE);
       }
     }
-  } while (client_fd < 0);
+  } while (ret < 0);
 
-  communicate(client_fd, &args, busy_waiting, debug);
+  communicate(sockfd, passed_memory, &args, busy_waiting, debug);
 
-  if (close(client_fd)) {
-    perror("close()");
-    exit(EXIT_FAILURE);
-  }
   if (close(sockfd)) {
     perror("close()");
     exit(EXIT_FAILURE);
