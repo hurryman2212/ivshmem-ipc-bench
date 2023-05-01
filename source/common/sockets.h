@@ -39,4 +39,24 @@ int set_io_flag(int socket_fd, int flag);
 
 int receive(int connection, void* buffer, int size, int busy_waiting);
 
+typedef struct SocketArgs {
+  int count;
+  int size;
+  
+  int rcvbuf_size;
+  int sndbuf_size;
+
+  const char *server_addr;
+  int server_port;
+
+  const char *shmem_backend;
+
+  bool is_nonblock;
+  bool is_debug;
+} SocketArgs;
+void socket_parse_args(SocketArgs *args, int argc, char *argv[]);
+
+#define SOCKET_DEFAULT_SERVER_ADDR "127.0.0.1"
+#define SOCKET_DEFAULT_SERVER_PORT 12345
+
 #endif /* SOCKETS_H */

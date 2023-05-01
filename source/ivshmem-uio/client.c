@@ -19,9 +19,8 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void communicate(int fd, void *shared_memory, struct Arguments *args,
-                 int busy_waiting, uint16_t dest_ivposition, uint16_t dest_msi,
-                 int debug) {
+void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
+                 int busy_waiting, uint16_t dest_ivposition, int debug) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -35,7 +34,7 @@ void communicate(int fd, void *shared_memory, struct Arguments *args,
     exit(EXIT_FAILURE);
   }
 
-  reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, dest_msi);
+  reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, 0);
 
   for (; args->count > 0; --args->count) {
     uio_wait(fd, busy_waiting, debug);
@@ -60,7 +59,7 @@ void communicate(int fd, void *shared_memory, struct Arguments *args,
       }
     }
 
-    reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, dest_msi);
+    reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, 0);
   }
 
   if (!busy_waiting) {
@@ -99,44 +98,27 @@ void communicate(int fd, void *shared_memory, struct Arguments *args,
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 9) {
-    fprintf(stderr,
-            "usage: %s IVSHMEM_UIOPATH IVSHMEM_MEMPATH  SERVER_IVPOSITION "
-            "SERVER_MSI COUNT SIZE NONBLOCK DEBUG\n",
-            argv[0]);
-    exit(EXIT_FAILURE);
-  }
-  const char *ivshmem_uiopath = argv[1];
-  const char *ivshmem_mempath = argv[2];
-  uint16_t server_ivposition = atoi(argv[3]);
-  uint16_t server_msi = atoi(argv[4]);
-  size_t count = atoi(argv[5]);
-  size_t size = atoi(argv[6]);
-  int busy_waiting = atoi(argv[7]);
-  int debug = atoi(argv[8]);
-
-  struct Arguments args;
-  args.count = count;
-  args.size = size;
+  struct IvshmemArgs args;
+  ivshmem_parse_args(&args, argc, argv);
 
   int ivshmem_uiofd;
-  if (busy_waiting)
-    ivshmem_uiofd = open(ivshmem_uiopath, O_RDWR | O_ASYNC | O_NONBLOCK);
+  if (args.is_nonblock)
+    ivshmem_uiofd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
   else
-    ivshmem_uiofd = open(ivshmem_uiopath, O_RDWR | O_ASYNC);
+    ivshmem_uiofd = open(args.intr_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_uiofd < 0) {
     perror("open(ivshmem_uiofd)");
     exit(EXIT_FAILURE);
   }
 
-  int ivshmem_memfd = open(ivshmem_mempath, O_RDWR | O_ASYNC | O_NONBLOCK);
+  int ivshmem_memfd = open(args.mem_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
   if (ivshmem_memfd < 0) {
     perror("open(ivshmem_memfd)");
     exit(EXIT_FAILURE);
   }
 
   struct stat st;
-  if (stat(ivshmem_mempath, &st)) {
+  if (stat(args.mem_dev_path, &st)) {
     perror("stat()");
     exit(EXIT_FAILURE);
   }
@@ -151,8 +133,8 @@ int main(int argc, char *argv[]) {
   }
 
   void *passed_memory = shared_memory + ivshmem_size - args.size;
-  communicate(ivshmem_uiofd, passed_memory, &args, busy_waiting,
-              server_ivposition, server_msi, debug);
+  communicate(ivshmem_uiofd, passed_memory, &args, args.is_nonblock,
+              args.server_port, args.is_debug);
 
   cleanup(shared_memory, ivshmem_size);
 

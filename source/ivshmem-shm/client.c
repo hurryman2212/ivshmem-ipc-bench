@@ -26,7 +26,7 @@ void shm_wait(atomic_uint *guard) {
 
 void shm_notify(atomic_uint *guard) { atomic_store(guard, 's'); }
 
-void communicate(void *shared_memory, struct Arguments *args, int debug) {
+void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -34,7 +34,7 @@ void communicate(void *shared_memory, struct Arguments *args, int debug) {
   }
 
   atomic_uint *guard = (atomic_uint *)shared_memory;
-  atomic_init(guard, 's');
+  shm_notify(guard);
 
   for (; args->count > 0; --args->count) {
     shm_wait(guard);
@@ -66,26 +66,14 @@ void communicate(void *shared_memory, struct Arguments *args, int debug) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 6) {
-    fprintf(stderr, "usage: %s IVSHMEM_DEVPATH COUNT SIZE NONBLOCK DEBUG\n",
-            argv[0]);
-    exit(EXIT_FAILURE);
-  }
-  const char *ivshmem_devpath = argv[1];
-  size_t count = atoi(argv[2]);
-  size_t size = atoi(argv[3]);
-  int busy_waiting = atoi(argv[4]);
-  int debug = atoi(argv[5]);
-
-  struct Arguments args;
-  args.count = count;
-  args.size = size;
+  struct IvshmemArgs args;
+  ivshmem_parse_args(&args, argc, argv);
 
   int ivshmem_fd;
-  if (busy_waiting)
-    ivshmem_fd = open(ivshmem_devpath, O_RDWR | O_ASYNC | O_NONBLOCK);
+  if (args.is_nonblock)
+    ivshmem_fd = open(args.mem_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
   else
-    ivshmem_fd = open(ivshmem_devpath, O_RDWR | O_ASYNC);
+    ivshmem_fd = open(args.mem_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_fd < 0) {
     perror("open()");
     exit(EXIT_FAILURE);
@@ -108,7 +96,7 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size - args.size - sizeof(atomic_uint);
-  communicate(passed_memory, &args, debug);
+  communicate(passed_memory, &args, args.is_debug);
 
   cleanup(shared_memory, ivshmem_size);
 

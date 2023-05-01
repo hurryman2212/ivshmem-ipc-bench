@@ -8,12 +8,15 @@
 
 #include <arpa/inet.h>
 #include <sys/mman.h>
+#include <sys/shm.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
 #include "common/common.h"
+#include "common/ivshmem.h"
+#include "common/sockets.h"
 
-void communicate(int sockfd, void *shared_memory, struct Arguments *args,
+void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
                  int busy_waiting, int debug) {
   void *buffer = malloc(args->size);
   if (!buffer) {
@@ -71,49 +74,50 @@ void communicate(int sockfd, void *shared_memory, struct Arguments *args,
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 11) {
+  struct SocketArgs args;
+  socket_parse_args(&args, argc, argv);
+
+  void *passed_memory;
+  if (args.shmem_backend) {
+    /* For compatibiliy, assume it is IVSHMEM backend */
+    int ivshmem_memfd = open(args.shmem_backend, O_RDWR | O_ASYNC | O_NONBLOCK);
+    if (ivshmem_memfd < 0) {
+      perror("open(ivshmem_memfd)");
+      exit(EXIT_FAILURE);
+    }
+
+    struct stat st;
+    if (stat(args.shmem_backend, &st)) {
+      perror("stat()");
+      exit(EXIT_FAILURE);
+    }
+    size_t ivshmem_size = st.st_size;
+    fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
+
+    void *shared_memory =
+        mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+             ivshmem_memfd, USERNET_IVSHMEM_DEVM_START);
+    if (shared_memory == MAP_FAILED) {
+      perror("mmap()");
+      exit(EXIT_FAILURE);
+    }
+
+    passed_memory = shared_memory + ivshmem_size - args.size;
+  } else {
     fprintf(stderr,
-            "usage: %s IVSHMEM_MEMPATH IVSHMEM_MEM_OFFSET SERVER_IP "
-            "SERVER_PORT RCVBUF_SIZE SNDBUF_SIZE COUNT SIZE NONBLOCK DEBUG\n",
-            argv[0]);
-    exit(EXIT_FAILURE);
-  }
-  const char *ivshmem_mempath = argv[1];
-  size_t ivshmem_mem_offset = atoi(argv[2]);
-  const char *server_ip = argv[3];
-  uint16_t server_port = atoi(argv[4]);
-  size_t rcvbuf_size = atoi(argv[5]);
-  size_t sndbuf_size = atoi(argv[6]);
-  size_t count = atoi(argv[7]);
-  size_t size = atoi(argv[8]);
-  int busy_waiting = atoi(argv[9]);
-  int debug = atoi(argv[10]);
+            "No shared memory backend specified; Create anonymous one\n");
+    key_t segment_key = generate_key("shm");
 
-  struct Arguments args;
-  args.count = count;
-  args.size = size;
+    int segment_id = shmget(segment_key, args.size, IPC_CREAT | 0666);
+    if (segment_id < 0) {
+      throw("Could not get segment");
+    }
 
-  int ivshmem_memfd = open(ivshmem_mempath, O_RDWR | O_ASYNC | O_NONBLOCK);
-  if (ivshmem_memfd < 0) {
-    perror("open(ivshmem_memfd)");
-    exit(EXIT_FAILURE);
+    passed_memory = (char *)shmat(segment_id, NULL, 0);
+    if (passed_memory == MAP_FAILED) {
+      throw("Could not attach segment");
+    }
   }
-
-  struct stat st;
-  if (stat(ivshmem_mempath, &st)) {
-    perror("stat()");
-    exit(EXIT_FAILURE);
-  }
-  size_t ivshmem_size = st.st_size;
-  fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
-
-  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
-                             MAP_SHARED, ivshmem_memfd, ivshmem_mem_offset);
-  if (shared_memory == MAP_FAILED) {
-    perror("mmap()");
-    exit(EXIT_FAILURE);
-  }
-  void *passed_memory = shared_memory + ivshmem_size - args.size;
 
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
@@ -135,28 +139,32 @@ int main(int argc, char *argv[]) {
   }
   fprintf(stderr, "(default) SO_SNDBUF == %d\n", optval);
 
-  optval = rcvbuf_size;
-  if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, optlen)) {
-    perror("setsockopt(SO_RCVBUF)");
-    exit(EXIT_FAILURE);
+  if (args.rcvbuf_size != -1) {
+    optval = args.rcvbuf_size;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, optlen)) {
+      perror("setsockopt(SO_RCVBUF)");
+      exit(EXIT_FAILURE);
+    }
+    if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
+      perror("getsockopt(SO_RCVBUF)");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "SO_RCVBUF = %d\n", optval);
   }
-  if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
-    perror("getsockopt(SO_RCVBUF)");
-    exit(EXIT_FAILURE);
+  if (args.sndbuf_size != -1) {
+    optval = args.sndbuf_size;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, optlen)) {
+      perror("setsockopt(SO_SNDBUF)");
+      exit(EXIT_FAILURE);
+    }
+    if (getsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, &optlen)) {
+      perror("getsockopt(SO_SNDBUF)");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "SO_SNDBUF = %d\n", optval);
   }
-  fprintf(stderr, "SO_RCVBUF = %d\n", optval);
-  optval = sndbuf_size;
-  if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, optlen)) {
-    perror("setsockopt(SO_SNDBUF)");
-    exit(EXIT_FAILURE);
-  }
-  if (getsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, &optlen)) {
-    perror("getsockopt(SO_SNDBUF)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "SO_SNDBUF = %d\n", optval);
 
-  if (busy_waiting) {
+  if (args.is_nonblock) {
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
       perror("fcntl(F_GETFL)");
@@ -170,14 +178,14 @@ int main(int argc, char *argv[]) {
 
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = inet_addr(server_ip);
-  server_addr.sin_port = htons(server_port);
+  server_addr.sin_addr.s_addr = inet_addr(args.server_addr);
+  server_addr.sin_port = htons(args.server_port);
   int ret;
   do {
     ret = connect(sockfd, (const struct sockaddr *)&server_addr,
                   sizeof(server_addr));
     if (ret < 0) {
-      if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR) ||
+      if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR) ||
           (errno == EINPROGRESS) || (errno == EALREADY))
         continue;
       else {
@@ -187,11 +195,15 @@ int main(int argc, char *argv[]) {
     }
   } while (ret < 0);
 
-  communicate(sockfd, passed_memory, &args, busy_waiting, debug);
+  communicate(sockfd, passed_memory, &args, args.is_nonblock, args.is_debug);
 
   if (close(sockfd)) {
     perror("close()");
     exit(EXIT_FAILURE);
+  }
+
+  if (!args.shmem_backend) {
+    shmdt(passed_memory);
   }
 
   return EXIT_SUCCESS;

@@ -2,8 +2,11 @@
 !.gitignore
 !LICENSE
 
-!source
-!source/**
-
 # CMake
 !CMakeLists.txt
+
+# Shell
+!*.sh
+
+!source
+!source/**

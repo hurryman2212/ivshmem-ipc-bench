@@ -1,6 +1,7 @@
 #ifndef IPC_BENCH_ARGUMENTS_H
 #define IPC_BENCH_ARGUMENTS_H
 
+#define DEFAULT_MESSAGE_COUNT 1000
 #define DEFAULT_MESSAGE_SIZE 4096
 
 void print_usage();

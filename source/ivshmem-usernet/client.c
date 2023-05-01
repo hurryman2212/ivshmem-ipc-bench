@@ -18,7 +18,7 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void communicate(int fd, void *shared_memory, struct Arguments *args,
+void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
                  int busy_waiting, uint16_t src_port, uint16_t dest_ivposition,
                  uint16_t dest_port, int debug) {
   void *buffer = malloc(args->size);
@@ -64,31 +64,19 @@ void communicate(int fd, void *shared_memory, struct Arguments *args,
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 9) {
-    fprintf(stderr,
-            "usage: %s IVSHMEM_DEVPATH CLIENT_PORT SERVER_IVPOSITION "
-            "SERVER_PORT COUNT SIZE NONBLOCK DEBUG\n",
-            argv[0]);
+  struct IvshmemArgs args;
+  ivshmem_parse_args(&args, argc, argv);
+
+  if (args.peer_id == -1) {
+    fprintf(stderr, "Please set peer address with -A option!\n");
     exit(EXIT_FAILURE);
   }
-  const char *ivshmem_devpath = argv[1];
-  uint16_t client_port = atoi(argv[2]);
-  uint16_t server_ivposition = atoi(argv[3]);
-  uint16_t server_port = atoi(argv[4]);
-  size_t count = atoi(argv[5]);
-  size_t size = atoi(argv[6]);
-  int busy_waiting = atoi(argv[7]);
-  int debug = atoi(argv[8]);
 
-  struct Arguments args;
-  args.count = count;
-  args.size = size;
   int ivshmem_fd;
-
-  if (busy_waiting)
-    ivshmem_fd = open(ivshmem_devpath, O_RDWR | O_ASYNC | O_NONBLOCK);
+  if (args.is_nonblock)
+    ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
   else
-    ivshmem_fd = open(ivshmem_devpath, O_RDWR | O_ASYNC);
+    ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_fd < 0) {
     perror("open()");
     exit(EXIT_FAILURE);
@@ -110,8 +98,8 @@ int main(int argc, char *argv[]) {
   }
 
   void *passed_memory = shared_memory + ivshmem_size - args.size;
-  communicate(ivshmem_fd, passed_memory, &args, busy_waiting, client_port,
-              server_ivposition, server_port, debug);
+  communicate(ivshmem_fd, passed_memory, &args, args.is_nonblock,
+              args.client_port, args.peer_id, args.server_port, args.is_debug);
 
   cleanup(shared_memory, ivshmem_size);
 

@@ -29,7 +29,7 @@ void parse_arguments(Arguments *arguments, int argc, char *argv[]) {
 
 	// Default values
 	arguments->size = DEFAULT_MESSAGE_SIZE;
-	arguments->count = 1000;
+	arguments->count = DEFAULT_MESSAGE_COUNT;
 
 	// Command line arguments
 	// clang-format off
