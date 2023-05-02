@@ -1,6 +1,7 @@
 #ifndef IPC_BENCH_IVSHMEM_H
 #define IPC_BENCH_IVSHMEM_H
 
+#include <stdatomic.h>
 #include <stdint.h>
 
 #define IVSHMEM_DOORBELL_MSG(ivposition, msi_index)                            \
@@ -35,7 +36,8 @@ void intr_wait(int fd, int busy_waiting, uint16_t src_port, int debug);
 void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
                  uint16_t dest_port, int debug);
 
-void uio_wait(int fd, int busy_waiting, int debug);
+void uio_wait(int fd, int busy_waiting, int debug, atomic_uint *guard,
+              char expect);
 
 typedef struct IvshmemArgs {
   int count;
@@ -49,6 +51,8 @@ typedef struct IvshmemArgs {
   int server_port;
 
   int shmem_index;
+
+  int is_reset;
 
   int is_nonblock;
 

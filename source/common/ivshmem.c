@@ -32,16 +32,27 @@ void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
   }
 }
 
-void uio_wait(int fd, int busy_waiting, int debug) {
+int shm_try(atomic_uint *guard, char expect) {
+  if (atomic_load(guard) != expect)
+    return 0;
+  return 1;
+}
+#define likely(x) __builtin_expect((x), 1)
+#define unlikely(x) __builtin_expect((x), 0)
+void uio_wait(int fd, int busy_waiting, int debug, atomic_uint *guard,
+              char expect) {
   uint32_t dump;
-  do
-    if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t))
-      return;
-  while ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR));
-  if (errno) {
-    perror("read()");
-    exit(EXIT_FAILURE);
-  }
+  do {
+    if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t)) {
+      if (shm_try(guard, expect))
+        return;
+    } else if (unlikely((!busy_waiting || (errno != EAGAIN)) &&
+                        (errno != EINTR))) {
+      break;
+    }
+  } while (1);
+  perror("read()");
+  exit(EXIT_FAILURE);
 }
 
 static void ivshmem_usage(const char *progname) {
@@ -54,6 +65,7 @@ static void ivshmem_usage(const char *progname) {
          "  -S <server_port> (default is %d)\n"
          "  -C <client_port> (default is %d)\n"
          "  -i <shmem_index>\n"
+         "  -R: Reset previous interrupts (default is `false`)"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
          progname, DEFAULT_MESSAGE_COUNT, DEFAULT_MESSAGE_SIZE,
@@ -75,11 +87,13 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
   args->shmem_index = -1;
 
+  args->is_reset = 0;
+
   args->is_nonblock = 0;
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hND:b:c:I:M:A:S:C:i:")) != -1) {
+  while ((c = getopt(argc, argv, "hRND:b:c:I:M:A:S:C:i:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
@@ -107,6 +121,10 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
     case 'i': /* Memory index */
       args->shmem_index = atoi(optarg);
+      break;
+
+    case 'R': /* Reset previous interrupts */
+      args->is_reset = 1;
       break;
 
     case 'N': /* Non-blocking mode */

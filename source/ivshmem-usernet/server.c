@@ -21,11 +21,6 @@ void cleanup(void *shared_memory, size_t size) {
 void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
                  int busy_waiting, uint16_t src_port, uint16_t dest_ivposition,
                  uint16_t dest_port, int debug) {
-  if (ioctl(fd, IOCTL_CLEAR, 0)) {
-    perror("ioctl(IOCTL_CLEAR)");
-    exit(EXIT_FAILURE);
-  }
-
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -70,11 +65,6 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   tmp_arg.count = args->count;
   tmp_arg.size = args->size;
   evaluate(&bench, &tmp_arg);
-
-  if (ioctl(fd, IOCTL_CLEAR, 0)) {
-    perror("ioctl(IOCTL_CLEAR)");
-    exit(EXIT_FAILURE);
-  }
 
   free(buffer);
 }
@@ -133,6 +123,14 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
+
+  if (args.is_reset) {
+    if (ioctl(ivshmem_fd, IOCTL_CLEAR, 0)) {
+      perror("ioctl(IOCTL_CLEAR)");
+      exit(EXIT_FAILURE);
+    }
+  }
+
   communicate(ivshmem_fd, passed_memory, &args, args.is_nonblock,
               args.server_port, args.peer_id, args.client_port, args.is_debug);
 

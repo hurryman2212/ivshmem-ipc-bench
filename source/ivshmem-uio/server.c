@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,40 +20,14 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
+void shm_wait(atomic_uint *guard) {
+  while (atomic_load(guard) != 's')
+    ;
+}
+void shm_notify(atomic_uint *guard) { atomic_store(guard, 'c'); }
+
 void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
                  int busy_waiting, uint16_t dest_ivposition, int debug) {
-  if (!busy_waiting) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1) {
-      perror("fcntl(F_GETFL)");
-      exit(EXIT_FAILURE);
-    }
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-      perror("fcntl(F_SETFL)");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  uint32_t dump;
-  if (read(fd, &dump, sizeof(dump)) != 4) {
-    if (errno != EAGAIN) {
-      perror("uio_wait()");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  if (!busy_waiting) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1) {
-      perror("fcntl(F_GETFL)");
-      exit(EXIT_FAILURE);
-    }
-    if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
-      perror("fcntl(F_SETFL)");
-      exit(EXIT_FAILURE);
-    }
-  }
-
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -66,7 +41,11 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
     exit(EXIT_FAILURE);
   }
 
-  uio_wait(fd, busy_waiting, debug);
+  atomic_uint *guard = (atomic_uint *)shared_memory;
+  atomic_init(guard, 'c');
+  shm_wait(guard);
+
+  uio_wait(fd, busy_waiting, debug, guard, 's');
 
   struct Benchmarks bench;
   setup_benchmarks(&bench);
@@ -74,20 +53,30 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   for (int message = 0; message < args->count; ++message) {
     bench.single_start = now();
 
-    memset(shared_memory, 0x55, args->size);
+    /* Write */
+
+    memset(shared_memory + sizeof(atomic_uint), 0x55, args->size);
     if (debug) {
       for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)shared_memory)[i] != 0x55) {
+        if (((uint8_t *)(shared_memory + sizeof(atomic_uint)))[i] != 0x55) {
           fprintf(stderr, "Validation failed after memset()!\n");
           exit(EXIT_FAILURE);
         }
       }
     }
 
+    /* Post memory atomic first */
+    shm_notify(guard);
+    /* Then, send interrupt */
     reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, 0);
-    uio_wait(fd, busy_waiting, debug);
 
-    memcpy(buffer, shared_memory, args->size);
+    /* Write END */
+
+    /* Read */
+
+    uio_wait(fd, busy_waiting, debug, guard, 's');
+
+    memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
     if (debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0xAA) {
@@ -97,6 +86,8 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
       }
     }
 
+    /* Read END */
+
     benchmark(&bench);
   }
 
@@ -104,37 +95,6 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   tmp_arg.count = args->count;
   tmp_arg.size = args->size;
   evaluate(&bench, &tmp_arg);
-
-  if (!busy_waiting) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1) {
-      perror("fcntl(F_GETFL)");
-      exit(EXIT_FAILURE);
-    }
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-      perror("fcntl(F_SETFL)");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  if (read(fd, &dump, sizeof(dump)) != 4) {
-    if (errno != EAGAIN) {
-      perror("uio_wait()");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  if (!busy_waiting) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1) {
-      perror("fcntl(F_GETFL)");
-      exit(EXIT_FAILURE);
-    }
-    if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
-      perror("fcntl(F_SETFL)");
-      exit(EXIT_FAILURE);
-    }
-  }
 
   free(buffer);
 }
@@ -199,7 +159,41 @@ int main(int argc, char *argv[]) {
   }
 
   void *passed_memory =
-      shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
+      shared_memory + ivshmem_size -
+      ((args.shmem_index + 1) * (args.size + sizeof(atomic_uint)));
+
+  if (args.is_reset) {
+    if (!args.is_nonblock) {
+      int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
+      if (flags == -1) {
+        perror("fcntl(F_GETFL)");
+        exit(EXIT_FAILURE);
+      }
+      if (fcntl(ivshmem_uiofd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl(F_SETFL)");
+        exit(EXIT_FAILURE);
+      }
+    }
+    uint32_t dump;
+    if (read(ivshmem_uiofd, &dump, sizeof(dump)) != 4) {
+      if (errno != EAGAIN) {
+        perror("uio_wait()");
+        exit(EXIT_FAILURE);
+      }
+    }
+    if (!ivshmem_uiofd) {
+      int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
+      if (flags == -1) {
+        perror("fcntl(F_GETFL)");
+        exit(EXIT_FAILURE);
+      }
+      if (fcntl(ivshmem_uiofd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+        perror("fcntl(F_SETFL)");
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+
   communicate(ivshmem_uiofd, passed_memory, &args, args.is_nonblock,
               args.client_port, args.is_debug);
 

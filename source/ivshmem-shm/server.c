@@ -19,11 +19,11 @@ void cleanup(void *shared_memory, size_t size) {
     exit(EXIT_FAILURE);
   }
 }
+
 void shm_wait(atomic_uint *guard) {
   while (atomic_load(guard) != 's')
     ;
 }
-
 void shm_notify(atomic_uint *guard) { atomic_store(guard, 'c'); }
 
 void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {

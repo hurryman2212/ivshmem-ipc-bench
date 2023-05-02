@@ -55,11 +55,6 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
     intr_notify(fd, busy_waiting, dest_ivposition, dest_port, debug);
   }
 
-  if (ioctl(fd, IOCTL_CLEAR, 0)) {
-    perror("ioctl(IOCTL_CLEAR)");
-    exit(EXIT_FAILURE);
-  }
-
   free(buffer);
 }
 
@@ -117,6 +112,14 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
+
+  if (args.is_reset) {
+    if (ioctl(ivshmem_fd, IOCTL_CLEAR, 0)) {
+      perror("ioctl(IOCTL_CLEAR)");
+      exit(EXIT_FAILURE);
+    }
+  }
+
   communicate(ivshmem_fd, passed_memory, &args, args.is_nonblock,
               args.client_port, args.peer_id, args.server_port, args.is_debug);
 
