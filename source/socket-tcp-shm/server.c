@@ -92,6 +92,11 @@ int main(int argc, char *argv[]) {
   struct SocketArgs args;
   socket_parse_args(&args, argc, argv);
 
+  if (args.shmem_index == -1) {
+    fprintf(stderr, "No -i option set; Use 0 as the shared memory index\n");
+    args.shmem_index = 0;
+  }
+
   void *passed_memory;
   if (args.shmem_backend) {
     /* For compatibiliy, assume it is IVSHMEM backend */
@@ -117,11 +122,12 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    passed_memory = shared_memory + ivshmem_size - args.size;
+    passed_memory =
+        shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
   } else {
     fprintf(stderr,
             "No shared memory backend specified; Create anonymous one\n");
-    key_t segment_key = generate_key("shm");
+    key_t segment_key = ftok("shmem", args.shmem_index);
 
     segment_id = shmget(segment_key, args.size, IPC_CREAT | 0666);
     if (segment_id < 0) {

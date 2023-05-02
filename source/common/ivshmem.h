@@ -48,6 +48,8 @@ typedef struct IvshmemArgs {
   int client_port;
   int server_port;
 
+  int shmem_index;
+
   int is_nonblock;
 
   int is_debug;

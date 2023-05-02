@@ -23,7 +23,6 @@ find_package(PkgConfig REQUIRED)
 
 add_subdirectory(common)
 
-add_subdirectory(shm)
 add_subdirectory(ivshmem-shm)
 
 add_subdirectory(ivshmem-uio)

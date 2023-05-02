@@ -50,6 +50,7 @@ typedef struct SocketArgs {
   int server_port;
 
   const char *shmem_backend;
+  int shmem_index;
 
   int is_nodelay;
 

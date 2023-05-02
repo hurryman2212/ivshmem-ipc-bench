@@ -101,6 +101,11 @@ int main(int argc, char *argv[]) {
     args.peer_id = 1;
   }
 
+  if (args.shmem_index == -1) {
+    fprintf(stderr, "No -i option set; Use 0 as the shared memory index\n");
+    args.shmem_index = 0;
+  }
+
   int ivshmem_fd;
   if (args.is_nonblock)
     ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
@@ -126,7 +131,8 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  void *passed_memory = shared_memory + ivshmem_size - args.size;
+  void *passed_memory =
+      shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
   communicate(ivshmem_fd, passed_memory, &args, args.is_nonblock,
               args.server_port, args.peer_id, args.client_port, args.is_debug);
 

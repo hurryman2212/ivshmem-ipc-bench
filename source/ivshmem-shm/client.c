@@ -76,6 +76,11 @@ int main(int argc, char *argv[]) {
     args.mem_dev_path = IVSHMEM_MEM_DEFAULT_PATH;
   }
 
+  if (args.shmem_index == -1) {
+    fprintf(stderr, "No -i option set; Use 0 as the shared memory index\n");
+    args.shmem_index = 0;
+  }
+
   int ivshmem_fd;
   if (args.is_nonblock)
     ivshmem_fd = open(args.mem_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
@@ -102,7 +107,8 @@ int main(int argc, char *argv[]) {
   }
 
   void *passed_memory =
-      shared_memory + ivshmem_size - args.size - sizeof(atomic_uint);
+      shared_memory + ivshmem_size -
+      ((args.shmem_index + 1) * (args.size + sizeof(atomic_uint)));
   communicate(passed_memory, &args, args.is_debug);
 
   cleanup(shared_memory, ivshmem_size);
