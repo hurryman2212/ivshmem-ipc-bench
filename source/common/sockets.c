@@ -206,7 +206,7 @@ static void socket_usage(const char *progname) {
          "  -A <server_address> (default is %s)\n"
          "  -S <server_port> (default is %d)\n"
          "  -M <shmem_backend>\n"
-         "  -i <shmem_index>\n"
+         "  -i <shmem_index> (default is 0)\n"
          "  -d: Disable TCP_NODELAY (default is `enable`)\n"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
@@ -226,7 +226,7 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
   args->server_port = SOCKET_DEFAULT_SERVER_PORT;
 
   args->shmem_backend = NULL;
-  args->shmem_index = -1;
+  args->shmem_index = 0;
 
   args->is_nodelay = 1;
 

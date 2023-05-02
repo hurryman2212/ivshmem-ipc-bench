@@ -62,7 +62,7 @@ static void ivshmem_usage(const char *progname) {
          "  -I <intr_dev_path>\n"
          "  -M <mem_dev_path>\n"
          "  -A <peer_address>\n"
-         "  -i <shmem_index>\n"
+         "  -i <shmem_index> (default is 0)\n"
          "  -R: Reset previous interrupts (default is `false`)"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
@@ -79,7 +79,7 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
   args->peer_id = -1;
 
-  args->shmem_index = -1;
+  args->shmem_index = 0;
 
   args->is_reset = 0;
 
