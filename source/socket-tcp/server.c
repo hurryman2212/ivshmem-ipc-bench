@@ -13,8 +13,7 @@
 #include "common/common.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, struct SocketArgs *args, int busy_waiting,
-                 int debug) {
+void communicate(int sockfd, struct SocketArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -28,7 +27,7 @@ void communicate(int sockfd, struct SocketArgs *args, int busy_waiting,
     bench.single_start = now();
 
     memset(buffer, 0x55, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memset()!\n");
@@ -41,7 +40,7 @@ void communicate(int sockfd, struct SocketArgs *args, int busy_waiting,
     do {
       ret = send(sockfd, buffer + (args->size - this_size), this_size, 0);
       if (ret < 0) {
-        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
+        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("send()");
@@ -55,7 +54,7 @@ void communicate(int sockfd, struct SocketArgs *args, int busy_waiting,
     do {
       ret = recv(sockfd, buffer + (args->size - this_size), this_size, 0);
       if (ret < 0) {
-        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
+        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("recv()");
@@ -64,7 +63,7 @@ void communicate(int sockfd, struct SocketArgs *args, int busy_waiting,
       }
       this_size -= ret;
     } while (this_size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0xAA) {
           fprintf(stderr, "Validation failed after recv()!\n");
@@ -200,7 +199,7 @@ int main(int argc, char *argv[]) {
     }
   } while (client_fd < 0);
 
-  communicate(client_fd, &args, args.is_nonblock, args.is_debug);
+  communicate(client_fd, &args);
 
   if (close(client_fd)) {
     perror("close()");

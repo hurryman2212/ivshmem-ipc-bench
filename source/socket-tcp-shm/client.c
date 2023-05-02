@@ -18,8 +18,7 @@
 #include "common/ivshmem.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
-                 int busy_waiting, int debug) {
+void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -32,7 +31,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
     do {
       ret = recv(sockfd, &dummy_message, sizeof(dummy_message), 0);
       if (ret < 0) {
-        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
+        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("recv()");
@@ -41,7 +40,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
       }
     } while (ret != sizeof(dummy_message));
     memcpy(buffer, shared_memory, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
@@ -51,7 +50,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
     }
 
     memset(shared_memory, 0xAA, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)shared_memory)[i] != 0xAA) {
           fprintf(stderr, "Validation failed after memset()!\n");
@@ -62,7 +61,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
     do {
       ret = send(sockfd, &dummy_message, sizeof(dummy_message), 0);
       if (ret < 0) {
-        if ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR))
+        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
           continue;
         else {
           perror("send()");
@@ -229,7 +228,7 @@ int main(int argc, char *argv[]) {
     }
   } while (ret < 0);
 
-  communicate(sockfd, passed_memory, &args, args.is_nonblock, args.is_debug);
+  communicate(sockfd, passed_memory, &args);
 
   if (close(sockfd)) {
     perror("close()");

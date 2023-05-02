@@ -26,7 +26,7 @@ void shm_wait(atomic_uint *guard) {
 }
 void shm_notify(atomic_uint *guard) { atomic_store(guard, 's'); }
 
-void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {
+void communicate(void *shared_memory, struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -40,7 +40,7 @@ void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {
     shm_wait(guard);
 
     memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
@@ -50,7 +50,7 @@ void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {
     }
 
     memset(shared_memory + sizeof(atomic_uint), 0xAA, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)(shared_memory + sizeof(atomic_uint)))[i] != 0xAA) {
           fprintf(stderr, "Validation failed after memset()!\n");
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
   void *passed_memory =
       shared_memory + ivshmem_size -
       ((args.shmem_index + 1) * (args.size + sizeof(atomic_uint)));
-  communicate(passed_memory, &args, args.is_debug);
+  communicate(passed_memory, &args);
 
   cleanup(shared_memory, ivshmem_size);
 

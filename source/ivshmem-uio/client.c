@@ -22,8 +22,7 @@ void cleanup(void *shared_memory, size_t size) {
 
 void shm_notify(atomic_uint *guard) { atomic_store(guard, 's'); }
 
-void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
-                 int busy_waiting, uint16_t dest_ivposition, int debug) {
+void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -40,15 +39,15 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   atomic_uint *guard = (atomic_uint *)shared_memory;
   shm_notify(guard);
 
-  reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, 0);
+  reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
 
   for (; args->count > 0; --args->count) {
     /* Read */
 
-    uio_wait(fd, busy_waiting, debug, guard, 'c');
+    uio_wait(fd, args, guard, 'c');
 
     memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
@@ -62,7 +61,7 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
     /* Write */
 
     memset(shared_memory + sizeof(atomic_uint), 0xAA, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)(shared_memory + sizeof(atomic_uint)))[i] != 0xAA) {
           fprintf(stderr, "Validation failed after memset()!\n");
@@ -74,7 +73,7 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
     /* Post memory atomic first */
     shm_notify(guard);
     /* Then, send interrupt */
-    reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(dest_ivposition, 0);
+    reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
 
     /* Write END */
   }
@@ -101,7 +100,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.peer_id == -1) {
-    fprintf(stderr, "No -A option set; Use 0 as the memory slot index\n");
+    fprintf(stderr,
+            "No -A option set; Use 0 as the device peer (server) index\n");
     args.peer_id = 0;
   }
 
@@ -177,8 +177,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  communicate(ivshmem_uiofd, passed_memory, &args, args.is_nonblock,
-              args.server_port, args.is_debug);
+  communicate(ivshmem_uiofd, passed_memory, &args);
 
   cleanup(shared_memory, ivshmem_size);
 

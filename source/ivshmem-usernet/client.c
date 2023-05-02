@@ -18,22 +18,20 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
-                 int busy_waiting, uint16_t src_port, uint16_t dest_ivposition,
-                 uint16_t dest_port, int debug) {
+void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
     exit(EXIT_FAILURE);
   }
 
-  intr_notify(fd, busy_waiting, dest_ivposition, dest_port, debug);
+  usernet_intr_notify(fd, args);
 
   for (; args->count > 0; --args->count) {
-    intr_wait(fd, busy_waiting, src_port, debug);
+    usernet_intr_wait(fd, args);
 
     memcpy(buffer, shared_memory, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
@@ -43,7 +41,7 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
     }
 
     memset(shared_memory, 0xAA, args->size);
-    if (debug) {
+    if (args->is_debug) {
       for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)shared_memory)[i] != 0xAA) {
           fprintf(stderr, "Validation failed after memset()!\n");
@@ -52,7 +50,7 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
       }
     }
 
-    intr_notify(fd, busy_waiting, dest_ivposition, dest_port, debug);
+    usernet_intr_notify(fd, args);
   }
 
   free(buffer);
@@ -76,7 +74,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.peer_id == -1) {
-    fprintf(stderr, "No -A option set; Use 0 as client-side peer ID\n");
+    fprintf(stderr,
+            "No -A option set; Use 0 as the device peer (server) index\n");
     args.peer_id = 0;
   }
 
@@ -120,8 +119,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  communicate(ivshmem_fd, passed_memory, &args, args.is_nonblock,
-              args.client_port, args.peer_id, args.server_port, args.is_debug);
+  communicate(ivshmem_fd, passed_memory, &args);
 
   cleanup(shared_memory, ivshmem_size);
 

@@ -8,24 +8,27 @@
 #include "common/arguments.h"
 #include "common/ivshmem.h"
 
-void intr_wait(int fd, int busy_waiting, uint16_t src_port, int debug) {
+#define likely(x) __builtin_expect((x), 1)
+#define unlikely(x) __builtin_expect((x), 0)
+
+void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
   do
-    if (!ioctl(fd, IOCTL_WAIT, src_port))
+    if (!ioctl(fd, IOCTL_WAIT, args->shmem_index))
       return;
-  while ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR));
+  while (
+      unlikely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
   if (errno) {
     perror("ioctl(IOCTL_WAIT)");
     exit(EXIT_FAILURE);
   }
 }
-void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
-                 uint16_t dest_port, int debug) {
-
+void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
   do
     if (!ioctl(fd, IOCTL_RING,
-               IVSHMEM_DOORBELL_MSG(dest_ivposition, dest_port)))
+               IVSHMEM_DOORBELL_MSG(args->peer_id, args->shmem_index)))
       return;
-  while ((busy_waiting && (errno == EAGAIN)) || (errno == EINTR));
+  while (
+      unlikely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
   if (errno) {
     perror("ioctl(IOCTL_RING)");
     exit(EXIT_FAILURE);
@@ -37,19 +40,16 @@ int shm_try(atomic_uint *guard, char expect) {
     return 0;
   return 1;
 }
-#define likely(x) __builtin_expect((x), 1)
-#define unlikely(x) __builtin_expect((x), 0)
-void uio_wait(int fd, int busy_waiting, int debug, atomic_uint *guard,
+void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard,
               char expect) {
   uint32_t dump;
   do {
     if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t)) {
       if (shm_try(guard, expect))
         return;
-    } else if (unlikely((!busy_waiting || (errno != EAGAIN)) &&
-                        (errno != EINTR))) {
+    } else if (unlikely((!args->is_nonblock || (errno != EAGAIN)) &&
+                        (errno != EINTR)))
       break;
-    }
   } while (1);
   perror("read()");
   exit(EXIT_FAILURE);
@@ -62,14 +62,11 @@ static void ivshmem_usage(const char *progname) {
          "  -I <intr_dev_path>\n"
          "  -M <mem_dev_path>\n"
          "  -A <peer_address>\n"
-         "  -S <server_port> (default is %d)\n"
-         "  -C <client_port> (default is %d)\n"
          "  -i <shmem_index>\n"
          "  -R: Reset previous interrupts (default is `false`)"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
-         progname, DEFAULT_MESSAGE_COUNT, DEFAULT_MESSAGE_SIZE,
-         IVSHMEM_DEFAULT_SERVER_PORT, IVSHMEM_DEFAULT_CLIENT_PORT);
+         progname, DEFAULT_MESSAGE_COUNT, DEFAULT_MESSAGE_SIZE);
 }
 void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
   int c;
@@ -82,9 +79,6 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
   args->peer_id = -1;
 
-  args->server_port = IVSHMEM_DEFAULT_SERVER_PORT;
-  args->client_port = IVSHMEM_DEFAULT_CLIENT_PORT;
-
   args->shmem_index = -1;
 
   args->is_reset = 0;
@@ -93,7 +87,7 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hRNDb:c:I:M:A:S:C:i:")) != -1) {
+  while ((c = getopt(argc, argv, "hRNDb:c:I:M:A:i:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
@@ -111,12 +105,6 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
     case 'A': /* Peer's device ID */
       args->peer_id = atoi(optarg);
-      break;
-    case 'S': /* Server's port # */
-      args->server_port = atoi(optarg);
-      break;
-    case 'C': /* Client's port # */
-      args->client_port = atoi(optarg);
       break;
 
     case 'i': /* Memory index */

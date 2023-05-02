@@ -29,16 +29,6 @@ enum usernet_ivshmem_ioctl_cmd {
 };
 #define USERNET_IVSHMEM_DEVM_START 4096
 
-#define IVSHMEM_DEFAULT_SERVER_PORT 0
-#define IVSHMEM_DEFAULT_CLIENT_PORT 1
-
-void intr_wait(int fd, int busy_waiting, uint16_t src_port, int debug);
-void intr_notify(int fd, int busy_waiting, uint16_t dest_ivposition,
-                 uint16_t dest_port, int debug);
-
-void uio_wait(int fd, int busy_waiting, int debug, atomic_uint *guard,
-              char expect);
-
 typedef struct IvshmemArgs {
   int count;
   int size;
@@ -47,8 +37,6 @@ typedef struct IvshmemArgs {
   const char *mem_dev_path;
 
   int peer_id;
-  int client_port;
-  int server_port;
 
   int shmem_index;
 
@@ -59,5 +47,11 @@ typedef struct IvshmemArgs {
   int is_debug;
 } IvshmemArgs;
 void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]);
+
+void usernet_intr_wait(int fd, struct IvshmemArgs *args);
+void usernet_intr_notify(int fd, struct IvshmemArgs *args);
+
+void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard,
+              char expect);
 
 #endif /* IPC_BENCH_IVSHMEM_H */
