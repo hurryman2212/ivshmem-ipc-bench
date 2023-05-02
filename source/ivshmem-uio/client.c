@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
       }
     }
-    if (!ivshmem_uiofd) {
+    if (!args.is_nonblock) {
       int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
       if (flags == -1) {
         perror("fcntl(F_GETFL)");
