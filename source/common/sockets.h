@@ -24,7 +24,7 @@ void set_socket_both_buffer_sizes(int socket_fd);
 timeval socket_timeout(int socket_fd, Direction direction);
 double socket_timeout_seconds(int socket_fd, Direction direction);
 
-void set_socket_timeout(int socket_fd, timeval* timeout, Direction direction);
+void set_socket_timeout(int socket_fd, timeval *timeout, Direction direction);
 void set_socket_both_timeouts(int socket_fd, int seconds, int microseconds);
 
 int get_socket_flags(int socket_fd);
@@ -37,12 +37,12 @@ bool socket_is_non_blocking(int socket_fd);
 
 int set_io_flag(int socket_fd, int flag);
 
-int receive(int connection, void* buffer, int size, int busy_waiting);
+int receive(int connection, void *buffer, int size, int busy_waiting);
 
 typedef struct SocketArgs {
   int count;
   int size;
-  
+
   int rcvbuf_size;
   int sndbuf_size;
 
@@ -51,8 +51,11 @@ typedef struct SocketArgs {
 
   const char *shmem_backend;
 
-  bool is_nonblock;
-  bool is_debug;
+  int is_nodelay;
+
+  int is_nonblock;
+
+  int is_debug;
 } SocketArgs;
 void socket_parse_args(SocketArgs *args, int argc, char *argv[]);
 

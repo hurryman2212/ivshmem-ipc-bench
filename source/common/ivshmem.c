@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,7 +77,6 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
   args->is_debug = 0;
 
   while ((c = getopt(argc, argv, "hND:b:c:I:M:A:S:C:")) != -1) {
-
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);

@@ -206,6 +206,7 @@ static void socket_usage(const char *progname) {
          "  -A <server_address> (default is %s)\n"
          "  -S <server_port> (default is %d)\n"
          "  -M <shmem_backend> (default is NULL; Do not use)\n"
+         "  -d: Disable TCP_NODELAY (default is `enable`)\n"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
          progname, SOCKET_DEFAULT_SERVER_ADDR, SOCKET_DEFAULT_SERVER_PORT);
@@ -224,12 +225,13 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
 
   args->shmem_backend = NULL;
 
+  args->is_nodelay = 1;
+
   args->is_nonblock = 0;
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hND:b:c:r:s:M:A:S:")) != -1) {
-
+  while ((c = getopt(argc, argv, "hdND:b:c:r:s:M:A:S:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
@@ -256,9 +258,14 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
       args->shmem_backend = optarg;
       break;
 
+    case 'd': /* Disable TCP_NODELAY */
+      args->is_nodelay = 0;
+      break;
+
     case 'N': /* Non-blocking mode */
       args->is_nonblock = 1;
       break;
+
     case 'D': /* Debug mode */
       args->is_debug = 1;
       break;

@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 
 #include "common/common.h"
@@ -100,6 +101,24 @@ int main(int argc, char *argv[]) {
   if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
     perror("bind()");
     exit(EXIT_FAILURE);
+  }
+
+  if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
+    perror("getsockopt(TCP_NODELAY)");
+    exit(EXIT_FAILURE);
+  }
+  fprintf(stderr, "(default) TCP_NODELAY == %d\n", optval);
+  if (optval != args.is_nodelay) {
+    optval = args.rcvbuf_size;
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, optlen)) {
+      perror("setsockopt(SO_RCVBUF)");
+      exit(EXIT_FAILURE);
+    }
+    if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
+      perror("getsockopt(SO_RCVBUF)");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "TCP_NODELAY = %d\n", optval);
   }
 
   if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
