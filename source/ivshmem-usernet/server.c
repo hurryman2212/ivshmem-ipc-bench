@@ -84,8 +84,8 @@ int main(int argc, char *argv[]) {
   ivshmem_parse_args(&args, argc, argv);
 
   if (args.peer_id == -1) {
-    fprintf(stderr, "Please set peer address with -A option!\n");
-    exit(EXIT_FAILURE);
+    fprintf(stderr, "No -A option set; Use 1 as client-side peer ID\n");
+    args.peer_id = 1;
   }
 
   int ivshmem_fd;
