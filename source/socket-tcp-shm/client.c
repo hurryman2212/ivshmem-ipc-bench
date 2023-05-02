@@ -98,6 +98,14 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
     size_t ivshmem_size = st.st_size;
+    if (!ivshmem_size) {
+      /* Try usernet_ivshmem's way */
+      ivshmem_size = ioctl(ivshmem_memfd, IOCTL_GETSIZE, 0);
+      if (ivshmem_size < 0) {
+        perror("ioctl(IOCTL_GETSIZE)");
+        exit(EXIT_FAILURE);
+      }
+    }
     fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
 
     void *shared_memory =
