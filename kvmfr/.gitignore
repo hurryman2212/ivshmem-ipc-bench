@@ -1,0 +1,12 @@
+*
+!.gitignore
+
+!Makefile
+
+!*.c
+!*.h
+*.mod.c
+
+!*.conf
+
+!*.expected

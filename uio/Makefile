@@ -21,6 +21,7 @@ default:
 
 install:
 	cp uio_ivshmem.ko /lib/modules/$(shell uname -r)/kernel/drivers/uio/
+	depmod
 
 clean:
 	rm -f *.ko *.o *.mod* *.symvers *.order .*.cmd
