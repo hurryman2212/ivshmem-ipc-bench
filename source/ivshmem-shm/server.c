@@ -9,6 +9,7 @@
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 #include "common/common.h"
 #include "common/ivshmem.h"
@@ -103,16 +104,25 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  size_t ivshmem_size = ioctl(ivshmem_fd, IOCTL_GETSIZE, 0);
-  if (ivshmem_size < 0) {
-    perror("ioctl(IOCTL_GETSIZE)");
+  struct stat st;
+  off_t ivshmem_mmap_offset = 0;
+  if (stat(args.mem_dev_path, &st)) {
+    perror("stat()");
     exit(EXIT_FAILURE);
   }
+  size_t ivshmem_size = st.st_size;
+  if (!ivshmem_size) {
+    /* Try usernet_ivshmem's way */
+    ivshmem_size = ioctl(ivshmem_fd, IOCTL_GETSIZE, 0);
+    if (ivshmem_size < 0) {
+      perror("ioctl(IOCTL_GETSIZE)");
+      exit(EXIT_FAILURE);
+    }
+    ivshmem_mmap_offset = USERNET_IVSHMEM_DEVM_START;
+  }
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
-
-  void *shared_memory =
-      mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, ivshmem_fd,
-           USERNET_IVSHMEM_DEVM_START);
+  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
+                             MAP_SHARED, ivshmem_fd, ivshmem_mmap_offset);
   if (shared_memory == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);

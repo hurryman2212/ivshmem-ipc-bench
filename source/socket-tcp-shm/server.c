@@ -107,6 +107,7 @@ int main(int argc, char *argv[]) {
     }
 
     struct stat st;
+    off_t ivshmem_mmap_offset = 0;
     if (stat(args.shmem_backend, &st)) {
       perror("stat()");
       exit(EXIT_FAILURE);
@@ -119,12 +120,11 @@ int main(int argc, char *argv[]) {
         perror("ioctl(IOCTL_GETSIZE)");
         exit(EXIT_FAILURE);
       }
+      ivshmem_mmap_offset = USERNET_IVSHMEM_DEVM_START;
     }
     fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
-
-    void *shared_memory =
-        mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-             ivshmem_memfd, USERNET_IVSHMEM_DEVM_START);
+    void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
+                               MAP_SHARED, ivshmem_memfd, ivshmem_mmap_offset);
     if (shared_memory == MAP_FAILED) {
       perror("mmap()");
       exit(EXIT_FAILURE);
