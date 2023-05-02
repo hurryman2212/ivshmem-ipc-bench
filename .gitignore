@@ -9,4 +9,7 @@
 !*.sh
 
 !source
-!source/**
+!source/**/
+
+!uio
+!uio/**/

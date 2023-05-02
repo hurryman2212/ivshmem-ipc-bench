@@ -1,4 +1,4 @@
 #!/bin/sh
-sudo rmmod uio_ivshmem
-sudo modprobe -r uio
-sudo modprobe usernet_ivshmem
+rmmod uio_ivshmem
+modprobe -r uio
+modprobe usernet_ivshmem
