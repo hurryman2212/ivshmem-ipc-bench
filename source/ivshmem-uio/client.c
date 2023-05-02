@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
   }
 
   void *passed_memory =
-      shared_memory + ivshmem_size - (args.peer_id * args.size);
+      shared_memory + ivshmem_size - ((args.peer_id + 1) * args.size);
   communicate(ivshmem_uiofd, passed_memory, &args, args.is_nonblock,
               args.server_port, args.is_debug);
 
