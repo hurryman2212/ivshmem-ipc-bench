@@ -97,8 +97,12 @@ int main(int argc, char *argv[]) {
   socklen_t optlen = sizeof(optval);
 
   optval = 1;
+  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, optlen)) {
+    perror("setsockopt(SO_REUSEADDR)");
+    exit(EXIT_FAILURE);
+  }
   if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
-    perror("bind()");
+    perror("setsockopt(SO_REUSEPORT)");
     exit(EXIT_FAILURE);
   }
 
@@ -176,6 +180,7 @@ int main(int argc, char *argv[]) {
   if ((bind(sockfd, (const struct sockaddr *)&server_addr,
             sizeof(server_addr))) != 0) {
     perror("bind()");
+    fprintf(stderr, "args.server_port == %d\n", args.server_port);
     exit(EXIT_FAILURE);
   }
 

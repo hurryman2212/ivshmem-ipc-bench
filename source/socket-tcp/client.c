@@ -165,6 +165,7 @@ int main(int argc, char *argv[]) {
         continue;
       else {
         perror("connect()");
+        fprintf(stderr, "args.server_port == %d\n", args.server_port);
         exit(EXIT_FAILURE);
       }
     }
