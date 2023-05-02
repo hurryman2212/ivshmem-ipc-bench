@@ -63,9 +63,22 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   free(buffer);
 }
 
+static const char IVSHMEM_INTR_DEFAULT_PATH[] = "/dev/usernet_ivshmem0";
+static const char IVSHMEM_MEM_DEFAULT_PATH[] = "/dev/usernet_ivshmem0";
 int main(int argc, char *argv[]) {
   struct IvshmemArgs args;
   ivshmem_parse_args(&args, argc, argv);
+
+  if (!args.intr_dev_path) {
+    fprintf(stderr, "No -I option set; Use %s as the interrupt device path\n",
+            IVSHMEM_INTR_DEFAULT_PATH);
+    args.intr_dev_path = IVSHMEM_INTR_DEFAULT_PATH;
+  }
+  if (!args.mem_dev_path) {
+    fprintf(stderr, "No -M option set; Use %s as the memory device path\n",
+            IVSHMEM_MEM_DEFAULT_PATH);
+    args.mem_dev_path = IVSHMEM_MEM_DEFAULT_PATH;
+  }
 
   if (args.peer_id == -1) {
     fprintf(stderr, "No -A option set; Use 0 as client-side peer ID\n");

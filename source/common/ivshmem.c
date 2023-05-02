@@ -48,15 +48,15 @@ static void ivshmem_usage(const char *progname) {
   printf("Usage: %s [OPTION]...\n"
          "  -b <block_size>\n"
          "  -c <count>\n"
-         "  -I <intr_dev_path>: (default is \"%s\")\n"
-         "  -M <mem_dev_path>: (default is \"%s\")\n"
-         "  -A <peer_address>\n"
+         "  -I <intr_dev_path>\n"
+         "  -M <mem_dev_path>\n"
+         "  -A <peer_address> (For UIO, this refers memory slot of which "
+         "offset is `block_size * peer_address`)\n"
          "  -S <server_port> (default is %d)\n"
          "  -C <client_port> (default is %d)\n"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
-         progname, IVSHMEM_DEFAULT_INTR_PATH, IVSHMEM_DEFAULT_MEM_PATH,
-         IVSHMEM_DEFAULT_SERVER_PORT, IVSHMEM_DEFAULT_CLIENT_PORT);
+         progname, IVSHMEM_DEFAULT_SERVER_PORT, IVSHMEM_DEFAULT_CLIENT_PORT);
 }
 void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
   int c;
@@ -67,8 +67,8 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
   args->server_port = IVSHMEM_DEFAULT_SERVER_PORT;
   args->client_port = IVSHMEM_DEFAULT_CLIENT_PORT;
 
-  args->intr_dev_path = IVSHMEM_DEFAULT_INTR_PATH;
-  args->mem_dev_path = IVSHMEM_DEFAULT_MEM_PATH;
+  args->intr_dev_path = NULL;
+  args->mem_dev_path = NULL;
 
   args->peer_id = -1;
 

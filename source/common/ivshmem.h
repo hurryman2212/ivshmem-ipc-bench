@@ -28,9 +28,6 @@ enum usernet_ivshmem_ioctl_cmd {
 };
 #define USERNET_IVSHMEM_DEVM_START 4096
 
-#define IVSHMEM_DEFAULT_INTR_PATH "/dev/usernet_ivshmem0"
-#define IVSHMEM_DEFAULT_MEM_PATH "/dev/usernet_ivshmem0"
-
 #define IVSHMEM_DEFAULT_SERVER_PORT 0
 #define IVSHMEM_DEFAULT_CLIENT_PORT 1
 

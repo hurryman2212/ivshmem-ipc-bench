@@ -65,9 +65,16 @@ void communicate(void *shared_memory, struct IvshmemArgs *args, int debug) {
   free(buffer);
 }
 
+static const char IVSHMEM_MEM_DEFAULT_PATH[] = "/dev/usernet_ivshmem0";
 int main(int argc, char *argv[]) {
   struct IvshmemArgs args;
   ivshmem_parse_args(&args, argc, argv);
+
+  if (!args.mem_dev_path) {
+    fprintf(stderr, "No -M option set; Use %s as the memory device path\n",
+            IVSHMEM_MEM_DEFAULT_PATH);
+    args.mem_dev_path = IVSHMEM_MEM_DEFAULT_PATH;
+  }
 
   int ivshmem_fd;
   if (args.is_nonblock)

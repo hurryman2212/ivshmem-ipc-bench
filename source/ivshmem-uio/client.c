@@ -97,9 +97,28 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args,
   free(buffer);
 }
 
+static const char IVSHMEM_INTR_DEFAULT_PATH[] = "/dev/uio0";
+static const char IVSHMEM_MEM_DEFAULT_PATH[] =
+    "/sys/class/uio/uio0/device/resource2_wc";
 int main(int argc, char *argv[]) {
   struct IvshmemArgs args;
   ivshmem_parse_args(&args, argc, argv);
+
+  if (!args.intr_dev_path) {
+    fprintf(stderr, "No -I option set; Use %s as the interrupt device path\n",
+            IVSHMEM_INTR_DEFAULT_PATH);
+    args.intr_dev_path = IVSHMEM_INTR_DEFAULT_PATH;
+  }
+  if (!args.mem_dev_path) {
+    fprintf(stderr, "No -M option set; Use %s as the memory device path\n",
+            IVSHMEM_MEM_DEFAULT_PATH);
+    args.mem_dev_path = IVSHMEM_MEM_DEFAULT_PATH;
+  }
+
+  if (args.peer_id == -1) {
+    fprintf(stderr, "No -A option set; Use 0 as the memory slot index\n");
+    args.peer_id = 0;
+  }
 
   int ivshmem_uiofd;
   if (args.is_nonblock)
@@ -132,7 +151,8 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  void *passed_memory = shared_memory + ivshmem_size - args.size;
+  void *passed_memory =
+      shared_memory + ivshmem_size - (args.peer_id * args.size);
   communicate(ivshmem_uiofd, passed_memory, &args, args.is_nonblock,
               args.server_port, args.is_debug);
 
