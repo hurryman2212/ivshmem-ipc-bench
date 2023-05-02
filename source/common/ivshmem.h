@@ -51,7 +51,7 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]);
 void usernet_intr_wait(int fd, struct IvshmemArgs *args);
 void usernet_intr_notify(int fd, struct IvshmemArgs *args);
 
-void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard,
-              char expect);
+void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard, char expect,
+              struct ivshmem_reg *reg_ptr);
 
 #endif /* IPC_BENCH_IVSHMEM_H */

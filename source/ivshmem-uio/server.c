@@ -40,11 +40,12 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
     exit(EXIT_FAILURE);
   }
 
+  fprintf(stderr, "reg_ptr->ivposition == %d\n", reg_ptr->ivposition);
+
   atomic_uint *guard = (atomic_uint *)shared_memory;
   atomic_init(guard, 'c');
-  shm_wait(guard);
 
-  uio_wait(fd, args, guard, 's');
+  uio_wait(fd, args, guard, 's', reg_ptr);
 
   struct Benchmarks bench;
   setup_benchmarks(&bench);
@@ -73,7 +74,7 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
 
     /* Read */
 
-    uio_wait(fd, args, guard, 's');
+    uio_wait(fd, args, guard, 's', reg_ptr);
 
     memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
     if (args->is_debug) {

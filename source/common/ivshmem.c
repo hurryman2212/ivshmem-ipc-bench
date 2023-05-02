@@ -40,13 +40,15 @@ int shm_try(atomic_uint *guard, char expect) {
     return 0;
   return 1;
 }
-void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard,
-              char expect) {
+void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard, char expect,
+              struct ivshmem_reg *reg_ptr) {
   uint32_t dump;
   do {
     if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t)) {
       if (shm_try(guard, expect))
         return;
+      else // This interrupt is not for me... Ring me again.
+        reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(reg_ptr->ivposition, 0);
     } else if (unlikely((!args->is_nonblock || (errno != EAGAIN)) &&
                         (errno != EINTR)))
       break;

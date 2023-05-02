@@ -36,15 +36,17 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
     exit(EXIT_FAILURE);
   }
 
-  atomic_uint *guard = (atomic_uint *)shared_memory;
-  shm_notify(guard);
+  fprintf(stderr, "reg_ptr->ivposition == %d\n", reg_ptr->ivposition);
 
+  atomic_uint *guard = (atomic_uint *)shared_memory;
+
+  shm_notify(guard);
   reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
 
   for (; args->count > 0; --args->count) {
     /* Read */
 
-    uio_wait(fd, args, guard, 'c');
+    uio_wait(fd, args, guard, 'c', reg_ptr);
 
     memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
     if (args->is_debug) {
