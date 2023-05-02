@@ -234,7 +234,7 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hdND:b:c:r:s:A:S:M:i:")) != -1) {
+  while ((c = getopt(argc, argv, "hdNDb:c:r:s:A:S:M:i:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
