@@ -8,6 +8,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/shm.h>
 #include <sys/socket.h>
