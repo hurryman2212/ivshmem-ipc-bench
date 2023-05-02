@@ -20,5 +20,8 @@ load: all
 install:
 	cp kvmfr.ko /lib/modules/$(shell uname -r)/kernel/drivers/char/
 	depmod
+uninstall:
+	rm -f /lib/modules/$(shell uname -r)/kernel/drivers/char/kvmfr.ko
+	depmod
 
 .PHONY: test
