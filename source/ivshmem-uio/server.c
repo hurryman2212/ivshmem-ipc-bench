@@ -96,6 +96,11 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
   tmp_arg.size = args->size;
   evaluate(&bench, &tmp_arg);
 
+  if (munmap(reg_ptr, 256)) {
+    perror("munmap()");
+    exit(EXIT_FAILURE);
+  }
+
   free(buffer);
 }
 
@@ -138,12 +143,6 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  int ivshmem_memfd = open(args.mem_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
-  if (ivshmem_memfd < 0) {
-    perror("open(ivshmem_memfd)");
-    exit(EXIT_FAILURE);
-  }
-
   struct stat st;
   if (stat(args.mem_dev_path, &st)) {
     perror("stat()");
@@ -153,7 +152,7 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
 
   void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
-                             MAP_SHARED, ivshmem_memfd, 0);
+                             MAP_SHARED, ivshmem_uiofd, 4096);
   if (shared_memory == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);
@@ -199,10 +198,6 @@ int main(int argc, char *argv[]) {
 
   cleanup(shared_memory, ivshmem_size);
 
-  if (close(ivshmem_memfd)) {
-    perror("close(ivshmem_memfd)");
-    exit(EXIT_FAILURE);
-  }
   if (close(ivshmem_uiofd)) {
     perror("close(ivshmem_uiofd)");
     exit(EXIT_FAILURE);
