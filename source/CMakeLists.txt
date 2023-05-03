@@ -32,3 +32,5 @@ add_subdirectory(ivshmem-usernet)
 
 add_subdirectory(socket-tcp)
 
+add_subdirectory(socket-udp)
+add_subdirectory(socket-udp-shm)

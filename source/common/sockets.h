@@ -53,6 +53,7 @@ typedef struct SocketArgs {
   int shmem_index;
 
   int is_nodelay;
+  int wait_all;
 
   int is_nonblock;
 

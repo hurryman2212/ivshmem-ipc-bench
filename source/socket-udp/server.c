@@ -13,7 +13,10 @@
 #include "common/common.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, struct SocketArgs *args) {
+void communicate(int sockfd, struct SocketArgs *args,
+                 struct sockaddr_in *client_addr) {
+  socklen_t sock_len = sizeof(*client_addr);
+
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -38,30 +41,27 @@ void communicate(int sockfd, struct SocketArgs *args) {
     size_t this_size = args->size;
     int ret;
     do {
-      ret = send(sockfd, buffer + (args->size - this_size), this_size, 0);
-      if (ret < 0) {
-        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
-          continue;
-        else {
-          perror("send()");
+      ret =
+          sendto(sockfd, (const char *)(buffer + (args->size - this_size)),
+                 this_size, 0, (const struct sockaddr *)client_addr, sock_len);
+      if (ret < 0)
+        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
+          perror("sendto()");
           exit(EXIT_FAILURE);
         }
-      }
       this_size -= ret;
     } while (this_size);
 
     this_size = args->size;
     do {
-      ret = recv(sockfd, buffer + (args->size - this_size), this_size,
-                 args->wait_all ? MSG_WAITALL : 0);
-      if (ret < 0) {
-        if ((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
-          continue;
-        else {
-          perror("recv()");
+      ret = recvfrom(sockfd, (char *)(buffer + (args->size - this_size)),
+                     this_size, args->wait_all ? MSG_WAITALL : 0,
+                     (struct sockaddr *)client_addr, &sock_len);
+      if (ret < 0)
+        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
+          perror("recvfrom()");
           exit(EXIT_FAILURE);
         }
-      }
       this_size -= ret;
     } while (this_size);
     if (args->is_debug) {
@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
   struct SocketArgs args;
   socket_parse_args(&args, argc, argv);
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0) {
     perror("socket()");
     exit(EXIT_FAILURE);
@@ -105,24 +105,6 @@ int main(int argc, char *argv[]) {
   if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
     perror("setsockopt(SO_REUSEPORT)");
     exit(EXIT_FAILURE);
-  }
-
-  if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-    perror("getsockopt(TCP_NODELAY)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "(default) TCP_NODELAY == %d\n", optval);
-  if (optval != args.is_nodelay) {
-    optval = args.is_nodelay;
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, optlen)) {
-      perror("setsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-      perror("getsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    fprintf(stderr, "TCP_NODELAY = %d\n", optval);
   }
 
   if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
@@ -175,9 +157,8 @@ int main(int argc, char *argv[]) {
 
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(args.server_port);
-
   if ((bind(sockfd, (const struct sockaddr *)&server_addr,
             sizeof(server_addr))) != 0) {
     perror("bind()");
@@ -185,32 +166,37 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  if ((listen(sockfd, 5)) != 0) {
-    perror("listen()");
-    exit(EXIT_FAILURE);
-  }
-
+  /* Handshake */
+  char tmp_buf = 'c';
   struct sockaddr_in client_addr = {0};
-  socklen_t socklen = sizeof(client_addr);
-  int client_fd;
-  do {
-    client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
-    if (client_fd < 0) {
-      if (((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR)))
-        continue;
-      else {
-        perror("accept()");
-        exit(EXIT_FAILURE);
-      }
+  socklen_t sock_len = sizeof(client_addr);
+  while (recvfrom(sockfd, (char *)&tmp_buf, 1, 0,
+                  (struct sockaddr *)&client_addr, &sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("recvfrom() for Handshake");
+      exit(EXIT_FAILURE);
     }
-  } while (client_fd < 0);
-
-  communicate(client_fd, &args);
-
-  if (close(client_fd)) {
-    perror("close()");
+  }
+  if (tmp_buf != 's') {
+    fprintf(stderr, "Handshake failed!\n");
     exit(EXIT_FAILURE);
   }
+  tmp_buf = 'c';
+  while (sendto(sockfd, (const char *)&tmp_buf, 1, 0,
+                (const struct sockaddr *)&client_addr, sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("sendto() for Handshake");
+      exit(EXIT_FAILURE);
+    }
+  }
+  fprintf(stderr, "Handshake is done!\n");
+
+  communicate(sockfd, &args, &client_addr);
+
   if (close(sockfd)) {
     perror("close()");
     exit(EXIT_FAILURE);

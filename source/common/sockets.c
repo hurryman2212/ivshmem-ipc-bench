@@ -208,6 +208,7 @@ static void socket_usage(const char *progname) {
          "  -M <shmem_backend>\n"
          "  -i <shmem_index> (default is 0)\n"
          "  -d: Disable TCP_NODELAY (default is `enable`)\n"
+         "  -w: Enable MSG_WAITALL (default is `disable`)\n"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
          progname, DEFAULT_MESSAGE_COUNT, DEFAULT_MESSAGE_SIZE,
@@ -229,12 +230,13 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
   args->shmem_index = 0;
 
   args->is_nodelay = 1;
+  args->wait_all = 0;
 
   args->is_nonblock = 0;
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hdNDb:c:r:s:A:S:M:i:")) != -1) {
+  while ((c = getopt(argc, argv, "hdwNDb:c:r:s:A:S:M:i:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
@@ -266,6 +268,9 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
 
     case 'd': /* Disable TCP_NODELAY */
       args->is_nodelay = 0;
+      break;
+    case 'w': /* Enable MSG_WAITALL */
+      args->wait_all = 1;
       break;
 
     case 'N': /* Non-blocking mode */

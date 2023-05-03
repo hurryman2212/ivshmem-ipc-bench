@@ -20,7 +20,10 @@
 
 int segment_id;
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
+void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
+                 struct sockaddr_in *client_addr) {
+  socklen_t sock_len = sizeof(*client_addr);
+
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -36,35 +39,41 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
     bench.single_start = now();
 
     memset(shared_memory, 0x55, args->size);
-    if (args->is_debug)
-      for (int i = 0; i < args->size; ++i)
+    if (args->is_debug) {
+      for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)shared_memory)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memset()!\n");
           exit(EXIT_FAILURE);
         }
+      }
+    }
     do
-      if ((ret = send(sockfd, &dummy_message, sizeof(dummy_message), 0)) < 0)
+      if ((ret = sendto(sockfd, &dummy_message, sizeof(dummy_message), 0,
+                        (const struct sockaddr *)client_addr, sock_len)) < 0)
         if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("send()");
+          perror("sendto()");
           exit(EXIT_FAILURE);
         }
     while (ret <= 0);
 
     do
-      if ((ret = recv(sockfd, &dummy_message, sizeof(dummy_message),
-                      args->wait_all ? MSG_WAITALL : 0)) < 0)
+      if ((ret = recvfrom(sockfd, &dummy_message, sizeof(dummy_message),
+                          args->wait_all ? MSG_WAITALL : 0,
+                          (struct sockaddr *)client_addr, &sock_len)) < 0)
         if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("recv()");
+          perror("recvfrom()");
           exit(EXIT_FAILURE);
         }
     while (ret <= 0);
     memcpy(buffer, shared_memory, args->size);
-    if (args->is_debug)
-      for (int i = 0; i < args->size; ++i)
+    if (args->is_debug) {
+      for (int i = 0; i < args->size; ++i) {
         if (((uint8_t *)buffer)[i] != 0xAA) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
           exit(EXIT_FAILURE);
         }
+      }
+    }
 
     benchmark(&bench);
   }
@@ -137,7 +146,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0) {
     perror("socket()");
     exit(EXIT_FAILURE);
@@ -154,24 +163,6 @@ int main(int argc, char *argv[]) {
   if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
     perror("setsockopt(SO_REUSEPORT)");
     exit(EXIT_FAILURE);
-  }
-
-  if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-    perror("getsockopt(TCP_NODELAY)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "(default) TCP_NODELAY == %d\n", optval);
-  if (optval != args.is_nodelay) {
-    optval = args.is_nodelay;
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, optlen)) {
-      perror("setsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-      perror("getsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    fprintf(stderr, "TCP_NODELAY = %d\n", optval);
   }
 
   if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
@@ -226,7 +217,6 @@ int main(int argc, char *argv[]) {
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   server_addr.sin_port = htons(args.server_port);
-
   if ((bind(sockfd, (const struct sockaddr *)&server_addr,
             sizeof(server_addr))) != 0) {
     perror("bind()");
@@ -234,32 +224,37 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  if ((listen(sockfd, 5)) != 0) {
-    perror("listen()");
-    exit(EXIT_FAILURE);
-  }
-
+  /* Handshake */
+  char tmp_buf = 'c';
   struct sockaddr_in client_addr = {0};
-  socklen_t socklen = sizeof(client_addr);
-  int client_fd;
-  do {
-    client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
-    if (client_fd < 0) {
-      if (((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR)))
-        continue;
-      else {
-        perror("accept()");
-        exit(EXIT_FAILURE);
-      }
+  socklen_t sock_len = sizeof(client_addr);
+  while (recvfrom(sockfd, (char *)&tmp_buf, 1, 0,
+                  (struct sockaddr *)&client_addr, &sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("recvfrom() for Handshake");
+      exit(EXIT_FAILURE);
     }
-  } while (client_fd < 0);
-
-  communicate(client_fd, passed_memory, &args);
-
-  if (close(client_fd)) {
-    perror("close()");
+  }
+  if (tmp_buf != 's') {
+    fprintf(stderr, "Handshake failed!\n");
     exit(EXIT_FAILURE);
   }
+  tmp_buf = 'c';
+  while (sendto(sockfd, (const char *)&tmp_buf, 1, 0,
+                (const struct sockaddr *)&client_addr, sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("sendto() for Handshake");
+      exit(EXIT_FAILURE);
+    }
+  }
+  fprintf(stderr, "Handshake is done!\n");
+
+  communicate(sockfd, passed_memory, &args, &client_addr);
+
   if (close(sockfd)) {
     perror("close()");
     exit(EXIT_FAILURE);

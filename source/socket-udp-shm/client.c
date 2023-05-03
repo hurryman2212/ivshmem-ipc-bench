@@ -18,61 +18,56 @@
 #include "common/ivshmem.h"
 #include "common/sockets.h"
 
-int segment_id;
+void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
+                 struct sockaddr_in *server_addr) {
+  socklen_t sock_len = sizeof(*server_addr);
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
     exit(EXIT_FAILURE);
   }
 
-  struct Benchmarks bench;
-  setup_benchmarks(&bench);
-
   int ret;
   uint8_t dummy_message = 0x00;
-  for (int message = 0; message < args->count; ++message) {
-    bench.single_start = now();
-
-    memset(shared_memory, 0x55, args->size);
-    if (args->is_debug)
-      for (int i = 0; i < args->size; ++i)
-        if (((uint8_t *)shared_memory)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
+  for (; args->count > 0; --args->count) {
     do
-      if ((ret = send(sockfd, &dummy_message, sizeof(dummy_message), 0)) < 0)
+      if ((ret = recvfrom(sockfd, &dummy_message, sizeof(dummy_message),
+                          args->wait_all ? MSG_WAITALL : 0,
+                          (struct sockaddr *)server_addr, &sock_len)) < 0)
         if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("send()");
-          exit(EXIT_FAILURE);
-        }
-    while (ret <= 0);
-
-    do
-      if ((ret = recv(sockfd, &dummy_message, sizeof(dummy_message),
-                      args->wait_all ? MSG_WAITALL : 0)) < 0)
-        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("recv()");
+          perror("recvfrom()");
           exit(EXIT_FAILURE);
         }
     while (ret <= 0);
     memcpy(buffer, shared_memory, args->size);
-    if (args->is_debug)
-      for (int i = 0; i < args->size; ++i)
-        if (((uint8_t *)buffer)[i] != 0xAA) {
+    if (args->is_debug) {
+      for (int i = 0; i < args->size; ++i) {
+        if (((uint8_t *)buffer)[i] != 0x55) {
           fprintf(stderr, "Validation failed after memcpy()!\n");
           exit(EXIT_FAILURE);
         }
+      }
+    }
 
-    benchmark(&bench);
+    memset(shared_memory, 0xAA, args->size);
+    if (args->is_debug) {
+      for (int i = 0; i < args->size; ++i) {
+        if (((uint8_t *)shared_memory)[i] != 0xAA) {
+          fprintf(stderr, "Validation failed after memset()!\n");
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    do
+      if ((ret = sendto(sockfd, &dummy_message, sizeof(dummy_message), 0,
+                        (const struct sockaddr *)server_addr, sock_len)) < 0)
+        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
+          perror("sendto()");
+          exit(EXIT_FAILURE);
+        }
+    while (ret <= 0);
   }
-
-  struct Arguments tmp_arg;
-  tmp_arg.count = args->count;
-  tmp_arg.size = args->size;
-  evaluate(&bench, &tmp_arg);
 
   free(buffer);
 }
@@ -126,7 +121,7 @@ int main(int argc, char *argv[]) {
             "No shared memory backend specified; Create anonymous one\n");
     key_t segment_key = ftok("shmem", args.shmem_index);
 
-    segment_id = shmget(segment_key, args.size, IPC_CREAT | 0666);
+    int segment_id = shmget(segment_key, args.size, IPC_CREAT | 0666);
     if (segment_id < 0) {
       throw("Could not get segment");
     }
@@ -137,7 +132,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0) {
     perror("socket()");
     exit(EXIT_FAILURE);
@@ -145,34 +140,6 @@ int main(int argc, char *argv[]) {
 
   int optval;
   socklen_t optlen = sizeof(optval);
-
-  optval = 1;
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &optval, optlen)) {
-    perror("setsockopt(SO_REUSEADDR)");
-    exit(EXIT_FAILURE);
-  }
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &optval, optlen)) {
-    perror("setsockopt(SO_REUSEPORT)");
-    exit(EXIT_FAILURE);
-  }
-
-  if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-    perror("getsockopt(TCP_NODELAY)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "(default) TCP_NODELAY == %d\n", optval);
-  if (optval != args.is_nodelay) {
-    optval = args.is_nodelay;
-    if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, optlen)) {
-      perror("setsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-      perror("getsockopt(SO_RCVBUF)");
-      exit(EXIT_FAILURE);
-    }
-    fprintf(stderr, "TCP_NODELAY = %d\n", optval);
-  }
 
   if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
     perror("getsockopt(SO_RCVBUF)");
@@ -222,44 +189,39 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  /* Handshake */
+  char tmp_buf = 's';
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  server_addr.sin_addr.s_addr = inet_addr(args.server_addr);
   server_addr.sin_port = htons(args.server_port);
-
-  if ((bind(sockfd, (const struct sockaddr *)&server_addr,
-            sizeof(server_addr))) != 0) {
-    perror("bind()");
-    fprintf(stderr, "args.server_port == %d\n", args.server_port);
-    exit(EXIT_FAILURE);
-  }
-
-  if ((listen(sockfd, 5)) != 0) {
-    perror("listen()");
-    exit(EXIT_FAILURE);
-  }
-
-  struct sockaddr_in client_addr = {0};
-  socklen_t socklen = sizeof(client_addr);
-  int client_fd;
-  do {
-    client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &socklen);
-    if (client_fd < 0) {
-      if (((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR)))
-        continue;
-      else {
-        perror("accept()");
-        exit(EXIT_FAILURE);
-      }
+  socklen_t sock_len = sizeof(server_addr);
+  while (sendto(sockfd, (const char *)&tmp_buf, 1, 0,
+                (const struct sockaddr *)&server_addr, sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("sendto() for Handshake");
+      exit(EXIT_FAILURE);
     }
-  } while (client_fd < 0);
-
-  communicate(client_fd, passed_memory, &args);
-
-  if (close(client_fd)) {
-    perror("close()");
+  }
+  while (recvfrom(sockfd, (char *)&tmp_buf, 1, 0,
+                  (struct sockaddr *)&server_addr, &sock_len) != 1) {
+    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
+      continue;
+    else {
+      perror("recvfrom() for Handshake");
+      exit(EXIT_FAILURE);
+    }
+  }
+  if (tmp_buf != 'c') {
+    fprintf(stderr, "Handshake failed!\n");
     exit(EXIT_FAILURE);
   }
+  fprintf(stderr, "Handshake is done!\n");
+
+  communicate(sockfd, passed_memory, &args, &server_addr);
+
   if (close(sockfd)) {
     perror("close()");
     exit(EXIT_FAILURE);
@@ -267,7 +229,6 @@ int main(int argc, char *argv[]) {
 
   if (!args.shmem_backend) {
     shmdt(passed_memory);
-    shmctl(segment_id, IPC_RMID, NULL);
   }
 
   return EXIT_SUCCESS;
