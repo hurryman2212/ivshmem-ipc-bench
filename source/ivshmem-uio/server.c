@@ -108,9 +108,11 @@ int main(int argc, char *argv[]) {
   }
 
   int ivshmem_uiofd;
-  if (args.is_nonblock)
+
+  if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     ivshmem_uiofd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
-  else
+  } else
     ivshmem_uiofd = open(args.intr_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_uiofd < 0) {
     perror("open(ivshmem_uiofd)");
@@ -137,36 +139,49 @@ int main(int argc, char *argv[]) {
       ((args.shmem_index + 1) * (args.size + sizeof(uint32_t)));
   memset(passed_memory, 0, args.size + sizeof(uint32_t));
 
+  int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
+  if (flags == -1) {
+    perror("fcntl(F_GETFL)");
+    exit(EXIT_FAILURE);
+  }
+  fprintf(stderr, "flags & O_NONBLOCK == %d\n", flags & O_NONBLOCK);
   if (args.is_reset) {
+
     if (!args.is_nonblock) {
-      int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
-      if (flags == -1) {
-        perror("fcntl(F_GETFL)");
-        exit(EXIT_FAILURE);
-      }
       if (fcntl(ivshmem_uiofd, F_SETFL, flags | O_NONBLOCK) == -1) {
         perror("fcntl(F_SETFL)");
         exit(EXIT_FAILURE);
       }
     }
+
     uint32_t dump;
-    if (read(ivshmem_uiofd, &dump, sizeof(dump)) != 4) {
-      if (errno != EAGAIN) {
-        perror("uio_wait()");
+    if (read(ivshmem_uiofd, &dump, sizeof(dump)) == 4) {
+      fprintf(stderr, "A leftover interrupt was consumed!\n");
+    } else {
+      if ((errno != EAGAIN) && (errno != EINTR)) {
+        perror("read()");
+        fprintf(
+            stderr,
+            "There was unknown problem during the resetting! Terminating...\n");
         exit(EXIT_FAILURE);
       }
     }
+
     if (!args.is_nonblock) {
-      int flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
-      if (flags == -1) {
-        perror("fcntl(F_GETFL)");
-        exit(EXIT_FAILURE);
-      }
-      if (fcntl(ivshmem_uiofd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+      if (fcntl(ivshmem_uiofd, F_SETFL, flags) == -1) {
         perror("fcntl(F_SETFL)");
         exit(EXIT_FAILURE);
       }
     }
+
+    fprintf(stderr, "Reset passed!\n");
+
+    flags = fcntl(ivshmem_uiofd, F_GETFL, 0);
+    if (flags == -1) {
+      perror("fcntl(F_GETFL)");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "flags & O_NONBLOCK == %d\n", flags & O_NONBLOCK);
   }
 
   communicate(ivshmem_uiofd, passed_memory, &args);

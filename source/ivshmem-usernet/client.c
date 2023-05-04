@@ -38,7 +38,7 @@ __attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
     /* CTS */
     memset(shared_memory, CTS_BITS_01010101, args->size);
     if (unlikely(args->is_debug))
-      debug_validate(buffer, args->size, CTS_BITS_01010101);
+      debug_validate(shared_memory, args->size, CTS_BITS_01010101);
     usernet_intr_notify(fd, args);
   }
 
@@ -68,9 +68,10 @@ int main(int argc, char *argv[]) {
   }
 
   int ivshmem_fd;
-  if (args.is_nonblock)
+  if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
-  else
+  } else
     ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_fd < 0) {
     perror("open()");

@@ -151,6 +151,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
       perror("fcntl(F_GETFL)");

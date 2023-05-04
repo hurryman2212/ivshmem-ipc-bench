@@ -18,7 +18,8 @@
 #include "common/ivshmem.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
+__attribute__((hot, flatten)) void communicate(int sockfd, void *shared_memory,
+                                               struct SocketArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -36,7 +37,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
     /* CTS */
     memset(shared_memory, CTS_BITS_01010101, args->size);
     if (unlikely(args->is_debug))
-      debug_validate(buffer, args->size, CTS_BITS_01010101);
+      debug_validate(shared_memory, args->size, CTS_BITS_01010101);
     socket_tcp_write_data(sockfd, &dummy_message, sizeof(dummy_message), args);
   }
 
@@ -179,6 +180,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
       perror("fcntl(F_GETFL)");

@@ -11,7 +11,8 @@
 #include "common/common.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, struct SocketArgs *args) {
+__attribute__((hot, flatten)) void communicate(int sockfd,
+                                               struct SocketArgs *args) {
   struct sockaddr_in server_addr = {0};
   socklen_t sock_len = sizeof(server_addr);
 
@@ -98,6 +99,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
       perror("fcntl(F_GETFL)");

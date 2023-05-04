@@ -18,7 +18,8 @@
 
 int segment_id;
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
+__attribute__((hot, flatten)) void communicate(int sockfd, void *shared_memory,
+                                               struct SocketArgs *args) {
   struct sockaddr_in client_addr = {0};
   socklen_t sock_len = sizeof(client_addr);
 
@@ -47,7 +48,7 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
     /* STC */
     memset(shared_memory, STC_BITS_10101010, args->size);
     if (unlikely(args->is_debug))
-      debug_validate(buffer, args->size, STC_BITS_10101010);
+      debug_validate(shared_memory, args->size, STC_BITS_10101010);
     socket_udp_write_data(sockfd, &dummy_message, sizeof(dummy_message),
                           &client_addr, sock_len, args);
 
@@ -184,6 +185,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1) {
       perror("fcntl(F_GETFL)");

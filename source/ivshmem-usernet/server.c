@@ -37,14 +37,14 @@ __attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
     /* STC */
     memset(shared_memory, STC_BITS_10101010, args->size);
     if (unlikely(args->is_debug))
-      debug_validate(buffer, args->size, STC_BITS_10101010);
+      debug_validate(shared_memory, args->size, STC_BITS_10101010);
     usernet_intr_notify(fd, args);
 
     /* CTS */
+    usernet_intr_wait(fd, args);
     memcpy(buffer, shared_memory, args->size);
     if (unlikely(args->is_debug))
       debug_validate(buffer, args->size, CTS_BITS_01010101);
-    usernet_intr_wait(fd, args);
 
     benchmark(&bench);
   }
@@ -80,9 +80,10 @@ int main(int argc, char *argv[]) {
   }
 
   int ivshmem_fd;
-  if (args.is_nonblock)
+  if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
-  else
+  } else
     ivshmem_fd = open(args.intr_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_fd < 0) {
     perror("open()");

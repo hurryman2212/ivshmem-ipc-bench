@@ -1,8 +1,10 @@
+#define _GNU_SOURCE
+
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -20,7 +22,7 @@ void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
   do
     if (!ioctl(fd, IOCTL_WAIT, args->shmem_index))
       return;
-  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
+  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
   perror("ioctl(IOCTL_WAIT)");
   exit(EXIT_FAILURE);
 }
@@ -29,23 +31,25 @@ void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
     if (!ioctl(fd, IOCTL_RING,
                IVSHMEM_DOORBELL_MSG(args->peer_id, args->shmem_index)))
       return;
-  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
-
+  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
   perror("ioctl(IOCTL_RING)");
   exit(EXIT_FAILURE);
 }
 
 void uio_wait(int fd, uint32_t *guard, uint32_t expect,
               struct ivshmem_reg *reg_ptr, struct IvshmemArgs *args) {
+  int ret;
   uint32_t dump;
   do
-    if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t)) {
-      if (*guard != expect)
+    /* Be careful, It might return not sizeof(uint32_t) even if successful! */
+    if ((ret = read(fd, &dump, sizeof(uint32_t)) > 0)) {
+      if (*guard == expect)
         return;
       else // This interrupt is not for me... Ring me again.
         reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(reg_ptr->ivposition, 0);
     }
-  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
+  /* There can be still EAGAIN happening even if it is blocking mode! */
+  while (likely((errno == 0) || (errno == EAGAIN) || (errno == EINTR)));
   perror("read()");
   exit(EXIT_FAILURE);
 }

@@ -67,9 +67,10 @@ int main(int argc, char *argv[]) {
   }
 
   int ivshmem_fd;
-  if (args.is_nonblock)
+  if (args.is_nonblock) {
+    fprintf(stderr, "args.is_nonblock == 1\n");
     ivshmem_fd = open(args.mem_dev_path, O_RDWR | O_ASYNC | O_NONBLOCK);
-  else
+  } else
     ivshmem_fd = open(args.mem_dev_path, O_RDWR | O_ASYNC);
   if (ivshmem_fd < 0) {
     perror("open()");
