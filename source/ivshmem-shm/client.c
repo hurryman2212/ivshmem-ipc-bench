@@ -101,8 +101,7 @@ int main(int argc, char *argv[]) {
   size_t ivshmem_size = st.st_size;
   if (!ivshmem_size) {
     /* Try usernet_ivshmem's way */
-    ivshmem_size = ioctl(ivshmem_fd, IOCTL_GETSIZE, 0);
-    if (ivshmem_size < 0) {
+    if (ioctl(ivshmem_fd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
       perror("ioctl(IOCTL_GETSIZE)");
       exit(EXIT_FAILURE);
     }

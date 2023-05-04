@@ -7,7 +7,6 @@
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>
 
 #include "common/common.h"
 #include "common/ivshmem.h"
@@ -100,8 +99,8 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  size_t ivshmem_size = syscall(SYS_ioctl, ivshmem_fd, IOCTL_GETSIZE, 0);
-  if (ivshmem_size < 0) {
+  size_t ivshmem_size;
+  if (ioctl(ivshmem_fd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
     perror("ioctl(IOCTL_GETSIZE)");
     exit(EXIT_FAILURE);
   }
