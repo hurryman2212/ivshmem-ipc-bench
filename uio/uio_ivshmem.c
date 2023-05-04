@@ -1,12 +1,12 @@
 /*
- * UIO IVShmem Driver
+ * UIO driver for IVSHMEM-Doorbell virtual device using devm_memremap_pages()
  *
  * (C) 2009 Cam Macdonell
  * (C) 2017 Henning Schild
+ * (C) 2023 Jihong Min
  * based on Hilscher CIF card driver (C) 2007 Hans J. Koch <hjk@linutronix.de>
  *
  * Licensed under GPL version 2 only.
- *
  */
 
 #include <linux/cdev.h>
@@ -227,3 +227,5 @@ module_pci_driver(ivshmem_pci_driver);
 MODULE_DEVICE_TABLE(pci, ivshmem_pci_ids);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Cam Macdonell");
+MODULE_AUTHOR("Henning Schild");
+MODULE_AUTHOR("Jihong Min");
