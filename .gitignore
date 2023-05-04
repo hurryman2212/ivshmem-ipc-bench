@@ -11,7 +11,5 @@
 !source
 !source/**/
 
-!uio
-!uio/**/
-!kvmfr
-!kvmfr/**/
+!uio_ivshmem
+!uio_ivshmem/**/
