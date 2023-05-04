@@ -18,7 +18,8 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
+__attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
+                                               struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -33,28 +34,17 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
   for (int message = 0; message < args->count; ++message) {
     bench.single_start = now();
 
-    memset(shared_memory, 0x55, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)shared_memory)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-
+    /* STC */
+    memset(shared_memory, STC_BITS_10101010, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, STC_BITS_10101010);
     usernet_intr_notify(fd, args);
-    usernet_intr_wait(fd, args);
 
+    /* CTS */
     memcpy(buffer, shared_memory, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after memcpy()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, CTS_BITS_01010101);
+    usernet_intr_wait(fd, args);
 
     benchmark(&bench);
   }
@@ -116,6 +106,7 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
+  memset(passed_memory, 0, args.size);
 
   if (args.is_reset) {
     if (ioctl(ivshmem_fd, IOCTL_CLEAR, 0)) {

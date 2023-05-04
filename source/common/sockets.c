@@ -5,9 +5,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include "common/arguments.h"
+#include "common/common.h"
 #include "common/sockets.h"
-#include "common/utility.h"
 
 typedef struct timeval timeval;
 
@@ -197,6 +196,78 @@ bool socket_is_non_blocking(int socket_fd) {
   return get_socket_flags(socket_fd) & O_NONBLOCK;
 }
 
+/* TCP DATA */
+
+void socket_tcp_read_data(int fd, void *buffer, size_t size,
+                          struct SocketArgs *args) {
+  int ret;
+  size_t left_size = size;
+
+  do
+    if ((ret = recv(fd, buffer + (size - left_size), left_size,
+                    args->wait_all ? MSG_WAITALL : 0)) < 0)
+      if (unlikely(!args->is_nonblock || (errno != EAGAIN)) &&
+          (errno != EINTR)) {
+        perror("recv()");
+        exit(EXIT_FAILURE);
+      }
+  while ((left_size = left_size - ret));
+}
+void socket_tcp_write_data(int fd, void *buffer, size_t size,
+                           struct SocketArgs *args) {
+  int ret;
+  size_t left_size = size;
+
+  do
+    if ((ret = send(fd, buffer + (size - left_size), left_size, 0)) < 0)
+      if (unlikely(!args->is_nonblock || (errno != EAGAIN)) &&
+          (errno != EINTR)) {
+        perror("send()");
+        exit(EXIT_FAILURE);
+      }
+  while ((left_size = left_size - ret));
+}
+
+/* TCP DATA END */
+
+/* UDP DATA */
+
+void socket_udp_read_data(int fd, void *buffer, size_t size,
+                          struct sockaddr_in *peer_addr, socklen_t *sock_len,
+                          struct SocketArgs *args) {
+  int ret;
+  size_t left_size = size;
+
+  do
+    if ((ret = recvfrom(fd, buffer + (size - left_size), left_size,
+                        args->wait_all ? MSG_WAITALL : 0,
+                        (struct sockaddr *)peer_addr, sock_len)) < 0)
+      if (unlikely(!args->is_nonblock || (errno != EAGAIN)) &&
+          (errno != EINTR)) {
+        perror("recvfrom()");
+        exit(EXIT_FAILURE);
+      }
+  while ((left_size = left_size - ret));
+}
+void socket_udp_write_data(int fd, void *buffer, size_t size,
+                           const struct sockaddr_in *peer_addr,
+                           socklen_t sock_len, struct SocketArgs *args) {
+  int ret;
+  size_t left_size = size;
+
+  do
+    if ((ret = sendto(fd, buffer + (size - left_size), left_size, 0,
+                      (const struct sockaddr *)peer_addr, sock_len)) < 0)
+      if (unlikely(!args->is_nonblock || (errno != EAGAIN)) &&
+          (errno != EINTR)) {
+        perror("sendto()");
+        exit(EXIT_FAILURE);
+      }
+  while ((left_size = left_size - ret));
+}
+
+/* UDP DATA END */
+
 static void socket_usage(const char *progname) {
   printf("Usage: %s [OPTION]...\n"
          "  -b <block_size> (default is %d)\n"
@@ -208,6 +279,7 @@ static void socket_usage(const char *progname) {
          "  -M <shmem_backend>\n"
          "  -i <shmem_index> (default is 0)\n"
          "  -d: Disable TCP_NODELAY (default is `enable`)\n"
+         "  -C: Enable TCP_CORK (default is `disable`)\n"
          "  -w: Enable MSG_WAITALL (default is `disable`)\n"
          "  -N: Non-block mode (default is `false`)\n"
          "  -D: Debug mode (default is `false`)\n",
@@ -229,14 +301,16 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
   args->shmem_backend = NULL;
   args->shmem_index = 0;
 
-  args->is_nodelay = 1;
+  args->is_nodelay = -1; // Enable by default
+  args->is_cork = 0;
+
   args->wait_all = 0;
 
   args->is_nonblock = 0;
 
   args->is_debug = 0;
 
-  while ((c = getopt(argc, argv, "hdwNDb:c:r:s:A:S:M:i:")) != -1) {
+  while ((c = getopt(argc, argv, "hdCwNDb:c:r:s:A:S:M:i:")) != -1) {
     switch (c) {
     case 'b': /* Block size */
       args->size = atoi(optarg);
@@ -269,6 +343,10 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
     case 'd': /* Disable TCP_NODELAY */
       args->is_nodelay = 0;
       break;
+    case 'C': /* Enable TCP_CORK */
+      args->is_cork = 1;
+      break;
+
     case 'w': /* Enable MSG_WAITALL */
       args->wait_all = 1;
       break;

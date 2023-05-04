@@ -1,4 +1,3 @@
-#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,46 +20,31 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void shm_wait(atomic_uint *guard) {
-  while (atomic_load(guard) != 'c')
-    ;
-}
-void shm_notify(atomic_uint *guard) { atomic_store(guard, 's'); }
-
-void communicate(void *shared_memory, struct IvshmemArgs *args) {
+__attribute__((hot, flatten)) void communicate(void *shared_memory,
+                                               struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
     exit(EXIT_FAILURE);
   }
 
-  atomic_uint *guard = (atomic_uint *)shared_memory;
-  shm_notify(guard);
+  uint32_t *guard = (uint32_t *)shared_memory;
+
+  userspace_shm_notify(guard, 's');
 
   for (; args->count > 0; --args->count) {
-    shm_wait(guard);
+    /* STC */
+    userspace_shm_wait(guard, 'c');
+    memcpy(buffer, shared_memory + sizeof(*guard), args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, STC_BITS_10101010);
 
-    memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memcpy()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-
-    memset(shared_memory + sizeof(atomic_uint), 0xAA, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)(shared_memory + sizeof(atomic_uint)))[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-
-    shm_notify(guard);
+    /* CTS */
+    memset(shared_memory + sizeof(*guard), CTS_BITS_01010101, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(shared_memory + sizeof(*guard), args->size,
+                     CTS_BITS_01010101);
+    userspace_shm_notify(guard, 's');
   }
 
   free(buffer);
@@ -117,7 +101,8 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size -
-      ((args.shmem_index + 1) * (args.size + sizeof(atomic_uint)));
+      ((args.shmem_index + 1) * (args.size + sizeof(uint32_t)));
+
   communicate(passed_memory, &args);
 
   cleanup(shared_memory, ivshmem_size);

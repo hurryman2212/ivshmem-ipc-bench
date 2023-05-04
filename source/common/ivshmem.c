@@ -2,59 +2,59 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "common/arguments.h"
+#include <x86gprintrin.h>
+
+#include "common/common.h"
 #include "common/ivshmem.h"
 
-#define likely(x) __builtin_expect((x), 1)
-#define unlikely(x) __builtin_expect((x), 0)
+void userspace_shm_wait(uint32_t *guard, const uint32_t expect) {
+  while (*guard != expect)
+    __pause(); // Optimization for spin loop
+}
 
 void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
   do
     if (!ioctl(fd, IOCTL_WAIT, args->shmem_index))
       return;
-  while (
-      unlikely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
-  if (errno) {
-    perror("ioctl(IOCTL_WAIT)");
-    exit(EXIT_FAILURE);
-  }
+  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
+  perror("ioctl(IOCTL_WAIT)");
+  exit(EXIT_FAILURE);
 }
 void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
   do
     if (!ioctl(fd, IOCTL_RING,
                IVSHMEM_DOORBELL_MSG(args->peer_id, args->shmem_index)))
       return;
-  while (
-      unlikely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
-  if (errno) {
-    perror("ioctl(IOCTL_RING)");
-    exit(EXIT_FAILURE);
-  }
+  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
+
+  perror("ioctl(IOCTL_RING)");
+  exit(EXIT_FAILURE);
 }
 
-int shm_try(atomic_uint *guard, char expect) {
-  if (atomic_load(guard) != expect)
-    return 0;
-  return 1;
-}
-void uio_wait(int fd, struct IvshmemArgs *args, atomic_uint *guard, char expect,
-              struct ivshmem_reg *reg_ptr) {
+void uio_wait(int fd, uint32_t *guard, uint32_t expect,
+              struct ivshmem_reg *reg_ptr, struct IvshmemArgs *args) {
   uint32_t dump;
-  do {
+  do
     if (read(fd, &dump, sizeof(uint32_t)) == sizeof(uint32_t)) {
-      if (shm_try(guard, expect))
+      if (*guard != expect)
         return;
       else // This interrupt is not for me... Ring me again.
         reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(reg_ptr->ivposition, 0);
-    } else if (unlikely((!args->is_nonblock || (errno != EAGAIN)) &&
-                        (errno != EINTR)))
-      break;
-  } while (1);
+    }
+  while (likely((args->is_nonblock && (errno == EAGAIN)) || (errno == EINTR)));
   perror("read()");
   exit(EXIT_FAILURE);
+}
+void uio_notify(uint32_t *guard, uint32_t expect, struct ivshmem_reg *reg_ptr,
+                struct IvshmemArgs *args) {
+  /* Post the memory update first */
+  userspace_shm_notify(guard, expect);
+  /* Then, send interrupt */
+  reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
 }
 
 static void ivshmem_usage(const char *progname) {

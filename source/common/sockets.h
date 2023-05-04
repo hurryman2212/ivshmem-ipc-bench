@@ -1,6 +1,7 @@
 #ifndef SOCKETS_H
 #define SOCKETS_H
 
+#include <arpa/inet.h>
 #include <stdbool.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -53,6 +54,8 @@ typedef struct SocketArgs {
   int shmem_index;
 
   int is_nodelay;
+  int is_cork;
+
   int wait_all;
 
   int is_nonblock;
@@ -60,6 +63,18 @@ typedef struct SocketArgs {
   int is_debug;
 } SocketArgs;
 void socket_parse_args(SocketArgs *args, int argc, char *argv[]);
+
+void socket_tcp_read_data(int fd, void *buffer, size_t size,
+                          struct SocketArgs *args);
+void socket_tcp_write_data(int fd, void *buffer, size_t size,
+                           struct SocketArgs *args);
+
+void socket_udp_read_data(int fd, void *buffer, size_t size,
+                          struct sockaddr_in *peer_addr, socklen_t *sock_len,
+                          struct SocketArgs *args);
+void socket_udp_write_data(int fd, void *buffer, size_t size,
+                           const struct sockaddr_in *peer_addr,
+                           socklen_t sock_len, struct SocketArgs *args);
 
 #define SOCKET_DEFAULT_SERVER_ADDR "127.0.0.1"
 #define SOCKET_DEFAULT_SERVER_PORT 12345

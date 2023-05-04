@@ -6,8 +6,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <arpa/inet.h>
-#include <netinet/tcp.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/shm.h>
@@ -18,9 +16,13 @@
 #include "common/ivshmem.h"
 #include "common/sockets.h"
 
-void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
-                 struct sockaddr_in *server_addr) {
-  socklen_t sock_len = sizeof(*server_addr);
+void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
+  struct sockaddr_in server_addr = {0};
+  socklen_t sock_len = sizeof(server_addr);
+
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = inet_addr(args->server_addr);
+  server_addr.sin_port = htons(args->server_port);
 
   void *buffer = malloc(args->size);
   if (!buffer) {
@@ -28,45 +30,26 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args,
     exit(EXIT_FAILURE);
   }
 
-  int ret;
-  uint8_t dummy_message = 0x00;
-  for (; args->count > 0; --args->count) {
-    do
-      if ((ret = recvfrom(sockfd, &dummy_message, sizeof(dummy_message),
-                          args->wait_all ? MSG_WAITALL : 0,
-                          (struct sockaddr *)server_addr, &sock_len)) < 0)
-        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("recvfrom()");
-          exit(EXIT_FAILURE);
-        }
-    while (ret <= 0);
-    memcpy(buffer, shared_memory, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memcpy()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
+  /* Handshake */
+  uint8_t dummy_message = 's';
+  socket_udp_write_data(sockfd, &dummy_message, sizeof(dummy_message),
+                        &server_addr, sock_len, args);
 
-    memset(shared_memory, 0xAA, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)shared_memory)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    do
-      if ((ret = sendto(sockfd, &dummy_message, sizeof(dummy_message), 0,
-                        (const struct sockaddr *)server_addr, sock_len)) < 0)
-        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("sendto()");
-          exit(EXIT_FAILURE);
-        }
-    while (ret <= 0);
+  dummy_message = 0x00;
+  for (; args->count > 0; --args->count) {
+    /* STC */
+    socket_udp_read_data(sockfd, &dummy_message, sizeof(dummy_message),
+                         &server_addr, &sock_len, args);
+    memcpy(buffer, shared_memory, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, STC_BITS_10101010);
+
+    /* CTS */
+    memset(shared_memory, CTS_BITS_01010101, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, CTS_BITS_01010101);
+    socket_udp_write_data(sockfd, &dummy_message, sizeof(dummy_message),
+                          &server_addr, sock_len, args);
   }
 
   free(buffer);
@@ -188,38 +171,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  /* Handshake */
-  char tmp_buf = 's';
-  struct sockaddr_in server_addr = {0};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = inet_addr(args.server_addr);
-  server_addr.sin_port = htons(args.server_port);
-  socklen_t sock_len = sizeof(server_addr);
-  while (sendto(sockfd, (const char *)&tmp_buf, 1, 0,
-                (const struct sockaddr *)&server_addr, sock_len) != 1) {
-    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
-      continue;
-    else {
-      perror("sendto() for Handshake");
-      exit(EXIT_FAILURE);
-    }
-  }
-  while (recvfrom(sockfd, (char *)&tmp_buf, 1, 0,
-                  (struct sockaddr *)&server_addr, &sock_len) != 1) {
-    if ((args.is_nonblock && (errno == EAGAIN)) || (errno == EINTR))
-      continue;
-    else {
-      perror("recvfrom() for Handshake");
-      exit(EXIT_FAILURE);
-    }
-  }
-  if (tmp_buf != 'c') {
-    fprintf(stderr, "Handshake failed!\n");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "Handshake is done!\n");
-
-  communicate(sockfd, passed_memory, &args, &server_addr);
+  communicate(sockfd, passed_memory, &args);
 
   if (close(sockfd)) {
     perror("close()");

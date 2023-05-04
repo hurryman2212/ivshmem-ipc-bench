@@ -25,43 +25,19 @@ void communicate(int sockfd, void *shared_memory, struct SocketArgs *args) {
     exit(EXIT_FAILURE);
   }
 
-  int ret;
   uint8_t dummy_message = 0x00;
   for (; args->count > 0; --args->count) {
-    do
-      if ((ret = recv(sockfd, &dummy_message, sizeof(dummy_message),
-                      args->wait_all ? MSG_WAITALL : 0)) < 0)
-        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("recv()");
-          exit(EXIT_FAILURE);
-        }
-    while (ret <= 0);
+    /* STC */
+    socket_tcp_read_data(sockfd, &dummy_message, sizeof(dummy_message), args);
     memcpy(buffer, shared_memory, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memcpy()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, STC_BITS_10101010);
 
-    memset(shared_memory, 0xAA, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)shared_memory)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-    do
-      if ((ret = send(sockfd, &dummy_message, sizeof(dummy_message), 0)) < 0)
-        if ((!args->is_nonblock || (errno != EAGAIN)) && (errno != EINTR)) {
-          perror("send()");
-          exit(EXIT_FAILURE);
-        }
-    while (ret <= 0);
+    /* CTS */
+    memset(shared_memory, CTS_BITS_01010101, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, CTS_BITS_01010101);
+    socket_tcp_write_data(sockfd, &dummy_message, sizeof(dummy_message), args);
   }
 
   free(buffer);
@@ -135,34 +111,47 @@ int main(int argc, char *argv[]) {
   int optval;
   socklen_t optlen = sizeof(optval);
 
+  /* TCP_NODELAY and TCP_CORK */
   if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
     perror("getsockopt(TCP_NODELAY)");
     exit(EXIT_FAILURE);
   }
   fprintf(stderr, "(default) TCP_NODELAY == %d\n", optval);
-  if (optval != args.is_nodelay) {
-    optval = args.is_nodelay;
+  if (getsockopt(sockfd, IPPROTO_TCP, TCP_CORK, &optval, &optlen)) {
+    perror("getsockopt(TCP_CORK)");
+    exit(EXIT_FAILURE);
+  }
+  fprintf(stderr, "(default) TCP_CORK == %d\n", optval);
+  if ((args.is_cork == 1) && (args.is_nodelay == 1)) {
+    fprintf(stderr,
+            "TCP_CORK and TCP_NODELAY cannot be used at the same time!");
+    exit(EXIT_FAILURE);
+  }
+  if (args.is_cork) {
+    /* Enable TCP_CORK only */
+    optval = 1;
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_CORK, &optval, optlen)) {
+      perror("setsockopt(TCP_CORK)");
+      exit(EXIT_FAILURE);
+    }
+    if (getsockopt(sockfd, IPPROTO_TCP, TCP_CORK, &optval, &optlen)) {
+      perror("getsockopt(TCP_CORK)");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "TCP_CORK = %d\n", optval);
+  } else if (args.is_nodelay) {
+    /* Enable TCP_NODELAY only */
+    optval = 1;
     if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, optlen)) {
-      perror("setsockopt(SO_RCVBUF)");
+      perror("setsockopt(TCP_NODELAY)");
       exit(EXIT_FAILURE);
     }
     if (getsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &optval, &optlen)) {
-      perror("getsockopt(SO_RCVBUF)");
+      perror("getsockopt(TCP_NODELAY)");
       exit(EXIT_FAILURE);
     }
     fprintf(stderr, "TCP_NODELAY = %d\n", optval);
   }
-
-  if (getsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, &optlen)) {
-    perror("getsockopt(SO_RCVBUF)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "(default) SO_RCVBUF == %d\n", optval);
-  if (getsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, &optlen)) {
-    perror("getsockopt(SO_SNDBUF)");
-    exit(EXIT_FAILURE);
-  }
-  fprintf(stderr, "(default) SO_SNDBUF == %d\n", optval);
 
   if (args.rcvbuf_size != -1) {
     optval = args.rcvbuf_size;

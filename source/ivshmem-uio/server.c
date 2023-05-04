@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,13 +19,8 @@ void cleanup(void *shared_memory, size_t size) {
   }
 }
 
-void shm_wait(atomic_uint *guard) {
-  while (atomic_load(guard) != 's')
-    ;
-}
-void shm_notify(atomic_uint *guard) { atomic_store(guard, 'c'); }
-
-void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
+__attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
+                                               struct IvshmemArgs *args) {
   void *buffer = malloc(args->size);
   if (!buffer) {
     perror("malloc()");
@@ -42,10 +36,10 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
 
   fprintf(stderr, "reg_ptr->ivposition == %d\n", reg_ptr->ivposition);
 
-  atomic_uint *guard = (atomic_uint *)shared_memory;
-  atomic_init(guard, 'c');
+  uint32_t *guard = (uint32_t *)shared_memory;
+  userspace_shm_notify(guard, 'c');
 
-  uio_wait(fd, args, guard, 's', reg_ptr);
+  uio_wait(fd, guard, 's', reg_ptr, args);
 
   struct Benchmarks bench;
   setup_benchmarks(&bench);
@@ -53,40 +47,20 @@ void communicate(int fd, void *shared_memory, struct IvshmemArgs *args) {
   for (int message = 0; message < args->count; ++message) {
     bench.single_start = now();
 
-    /* Write */
-
-    memset(shared_memory + sizeof(atomic_uint), 0x55, args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)(shared_memory + sizeof(atomic_uint)))[i] != 0x55) {
-          fprintf(stderr, "Validation failed after memset()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-
-    /* Post memory atomic first */
-    shm_notify(guard);
-    /* Then, send interrupt */
-    reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
+    /* STC */
+    memset(shared_memory + sizeof(*guard), STC_BITS_10101010, args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(shared_memory + sizeof(*guard), args->size,
+                     STC_BITS_10101010);
+    uio_notify(guard, 'c', reg_ptr, args);
 
     /* Write END */
 
-    /* Read */
-
-    uio_wait(fd, args, guard, 's', reg_ptr);
-
-    memcpy(buffer, shared_memory + sizeof(atomic_uint), args->size);
-    if (args->is_debug) {
-      for (int i = 0; i < args->size; ++i) {
-        if (((uint8_t *)buffer)[i] != 0xAA) {
-          fprintf(stderr, "Validation failed after memcpy()!\n");
-          exit(EXIT_FAILURE);
-        }
-      }
-    }
-
-    /* Read END */
+    /* CTS */
+    uio_wait(fd, guard, 's', reg_ptr, args);
+    memcpy(buffer, shared_memory + sizeof(*guard), args->size);
+    if (unlikely(args->is_debug))
+      debug_validate(buffer, args->size, CTS_BITS_01010101);
 
     benchmark(&bench);
   }
@@ -160,7 +134,8 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory =
       shared_memory + ivshmem_size -
-      ((args.shmem_index + 1) * (args.size + sizeof(atomic_uint)));
+      ((args.shmem_index + 1) * (args.size + sizeof(uint32_t)));
+  memset(passed_memory, 0, args.size + sizeof(uint32_t));
 
   if (args.is_reset) {
     if (!args.is_nonblock) {
