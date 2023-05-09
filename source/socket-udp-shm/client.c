@@ -39,8 +39,7 @@ __attribute__((hot, flatten)) void communicate(int sockfd, void *shared_memory,
   dummy_message = 0x00;
   for (; args->count > 0; --args->count) {
     /* STC */
-    socket_udp_read_data(sockfd, &dummy_message, sizeof(dummy_message),
-                         &server_addr, &sock_len, args);
+    socket_udp_read_data(sockfd, NULL, 0, &server_addr, &sock_len, args);
     memcpy(buffer, shared_memory, args->size);
     if (unlikely(args->is_debug))
       debug_validate(buffer, args->size, STC_BITS_10101010);
@@ -49,8 +48,7 @@ __attribute__((hot, flatten)) void communicate(int sockfd, void *shared_memory,
     memset(shared_memory, CTS_BITS_01010101, args->size);
     if (unlikely(args->is_debug))
       debug_validate(shared_memory, args->size, CTS_BITS_01010101);
-    socket_udp_write_data(sockfd, &dummy_message, sizeof(dummy_message),
-                          &server_addr, sock_len, args);
+    socket_udp_write_data(sockfd, NULL, 0, &server_addr, sock_len, args);
   }
 
   free(buffer);

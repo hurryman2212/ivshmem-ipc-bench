@@ -49,12 +49,10 @@ __attribute__((hot, flatten)) void communicate(int sockfd, void *shared_memory,
     memset(shared_memory, STC_BITS_10101010, args->size);
     if (unlikely(args->is_debug))
       debug_validate(shared_memory, args->size, STC_BITS_10101010);
-    socket_udp_write_data(sockfd, &dummy_message, sizeof(dummy_message),
-                          &client_addr, sock_len, args);
+    socket_udp_write_data(sockfd, NULL, 0, &client_addr, sock_len, args);
 
     /* CTS */
-    socket_udp_read_data(sockfd, &dummy_message, sizeof(dummy_message),
-                         &client_addr, &sock_len, args);
+    socket_udp_read_data(sockfd, NULL, 0, &client_addr, &sock_len, args);
     memcpy(buffer, shared_memory, args->size);
     if (unlikely(args->is_debug))
       debug_validate(buffer, args->size, CTS_BITS_01010101);
