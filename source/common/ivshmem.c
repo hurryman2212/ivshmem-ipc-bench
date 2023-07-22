@@ -28,7 +28,7 @@ void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
 }
 void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
   do
-    if (!ioctl(fd, IOCTL_RING,
+    if (!ioctl(fd, IOCTL_SIGNAL,
                IVSHMEM_DOORBELL_MSG(args->peer_id, args->shmem_index)))
       return;
   while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));

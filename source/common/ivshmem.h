@@ -14,17 +14,23 @@ struct ivshmem_reg {
   uint32_t ivlivelist;
 };
 enum usernet_ivshmem_ioctl_cmd {
-  IOCTL_CLEAR = 0,
-  IOCTL_GETPOS = 1,
+  /* Get this `ivposition` value */
+  IOCTL_GETPOS,
+  /* Get this IVSHMEM device memory size */
+  IOCTL_GETSIZE,
 
   /**
    * Do not use `2` value as ioctl() command!
    * (reserved for FIGETBSZ; see "linux/fs.h")
    */
+  IOCTL_CLEAR = 3,
 
-  IOCTL_GETSIZE = 3,
-  IOCTL_RING = 4,
-  IOCTL_WAIT = 5
+  /* Bind to the given source port number */
+  IOCTL_BIND,
+  /* Wait on the previously binded source port */
+  IOCTL_WAIT,
+  /* Send signal on the given interrupt line */
+  IOCTL_SIGNAL,
 };
 #define USERNET_IVSHMEM_DEVM_START 4096
 
