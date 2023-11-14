@@ -1,4 +1,0 @@
-[submodule "uio_ivshmem"]
-	path = uio_ivshmem
-	url = https://github.com/hurryman2212/uio_ivshmem.git
-	branch = main
