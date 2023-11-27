@@ -278,6 +278,7 @@ static void socket_usage(const char *progname) {
          "  -S <server_port> (default is %d)\n"
          "  -M <shmem_backend>\n"
          "  -i <shmem_index> (default is 0)\n"
+         "  -f <shmem_size_force>\n"
          "  -d: Disable TCP_NODELAY (default is `enable`)\n"
          "  -C: Enable TCP_CORK (default is `disable`)\n"
          "  -w: Enable MSG_WAITALL (default is `disable`)\n"
@@ -300,6 +301,7 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
 
   args->shmem_backend = NULL;
   args->shmem_index = 0;
+  args->shmem_size_force = 0;
 
   args->is_nodelay = -1; // Enable by default
   args->is_cork = 0;
@@ -338,6 +340,9 @@ void socket_parse_args(SocketArgs *args, int argc, char *argv[]) {
       break;
     case 'i': /* Memory index */
       args->shmem_index = atoi(optarg);
+      break;
+    case 'f': /* Memory index */
+      args->shmem_size_force = strtoul(optarg, NULL, 10);
       break;
 
     case 'd': /* Disable TCP_NODELAY */

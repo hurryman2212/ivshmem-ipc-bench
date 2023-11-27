@@ -52,6 +52,7 @@ typedef struct SocketArgs {
 
   const char *shmem_backend;
   int shmem_index;
+  size_t shmem_size_force;
 
   int is_nodelay;
   int is_cork;

@@ -90,21 +90,28 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  struct stat st;
-  off_t ivshmem_mmap_offset = 0;
-  if (stat(args.mem_dev_path, &st)) {
-    perror("stat()");
-    exit(EXIT_FAILURE);
-  }
-  size_t ivshmem_size = st.st_size;
-  if (!ivshmem_size) {
-    /* Try usernet_ivshmem's way */
-    if (ioctl(ivshmem_fd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
-      perror("ioctl(IOCTL_GETSIZE)");
+  loff_t ivshmem_mmap_offset = 0;
+  size_t ivshmem_size = 0;
+  if (args.mem_size_force)
+    ivshmem_size = args.mem_size_force;
+  else {
+    struct stat st;
+    if (stat(args.mem_dev_path, &st)) {
+      perror("stat()");
       exit(EXIT_FAILURE);
     }
-    ivshmem_mmap_offset = USERNET_IVSHMEM_DEVM_START;
+    ivshmem_size = st.st_size;
+
+    if (!ivshmem_size) {
+      /* Try usernet_ivshmem's way */
+      if (ioctl(ivshmem_fd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
+        perror("ioctl(IOCTL_GETSIZE)");
+        exit(EXIT_FAILURE);
+      }
+      ivshmem_mmap_offset = IVSHMEM_MMAP_MEM_OFFSET;
+    }
   }
+
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
   void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
                              MAP_SHARED, ivshmem_fd, ivshmem_mmap_offset);

@@ -26,6 +26,20 @@ __attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
     exit(EXIT_FAILURE);
   }
 
+  if (ioctl(fd, IOCTL_BIND, args->shmem_index)) {
+    perror("ioctl(IOCTL_BIND)");
+    exit(EXIT_FAILURE);
+  }
+  if (ioctl(fd, IOCTL_CLEAR, 0)) {
+    perror("ioctl(IOCTL_CLEAR)");
+    exit(EXIT_FAILURE);
+  }
+  if (ioctl(fd, IOCTL_CONNECT,
+            USERNET_IVSHMEM_IDENT(args->peer_id, args->shmem_index))) {
+    perror("ioctl(IOCTL_CONNECT)");
+    exit(EXIT_FAILURE);
+  }
+
   usernet_intr_wait(fd, args);
 
   struct Benchmarks bench;
@@ -97,9 +111,8 @@ int main(int argc, char *argv[]) {
   }
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
 
-  void *shared_memory =
-      mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, ivshmem_fd,
-           USERNET_IVSHMEM_DEVM_START);
+  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
+                             MAP_SHARED, ivshmem_fd, IVSHMEM_MMAP_MEM_OFFSET);
   if (shared_memory == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);

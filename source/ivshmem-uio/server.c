@@ -28,7 +28,7 @@ __attribute__((hot, flatten)) void communicate(int fd, void *shared_memory,
   }
 
   struct ivshmem_reg *reg_ptr =
-      mmap(NULL, 256, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+      mmap(NULL, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (reg_ptr == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);
@@ -127,8 +127,9 @@ int main(int argc, char *argv[]) {
   size_t ivshmem_size = st.st_size;
   fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
 
-  void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
-                             MAP_SHARED, ivshmem_uiofd, 4096);
+  void *shared_memory =
+      mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+           ivshmem_uiofd, IVSHMEM_MMAP_MEM_OFFSET);
   if (shared_memory == MAP_FAILED) {
     perror("mmap()");
     exit(EXIT_FAILURE);

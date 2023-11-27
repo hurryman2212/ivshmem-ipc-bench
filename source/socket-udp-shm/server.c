@@ -79,28 +79,36 @@ int main(int argc, char *argv[]) {
 
   void *passed_memory;
   if (args.shmem_backend) {
-    /* For compatibiliy, assume it is IVSHMEM backend */
+    /* For compatibiliy, assume it is IVSHMEM backend. */
+
     int ivshmem_memfd = open(args.shmem_backend, O_RDWR | O_ASYNC | O_NONBLOCK);
     if (ivshmem_memfd < 0) {
       perror("open(ivshmem_memfd)");
       exit(EXIT_FAILURE);
     }
 
-    struct stat st;
-    off_t ivshmem_mmap_offset = 0;
-    if (stat(args.shmem_backend, &st)) {
-      perror("stat()");
-      exit(EXIT_FAILURE);
-    }
-    size_t ivshmem_size = st.st_size;
-    if (!ivshmem_size) {
-      /* Try usernet_ivshmem's way */
-      if (ioctl(ivshmem_memfd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
-        perror("ioctl(IOCTL_GETSIZE)");
+    loff_t ivshmem_mmap_offset = 0;
+    size_t ivshmem_size = 0;
+    if (args.shmem_size_force)
+      ivshmem_size = args.shmem_size_force;
+    else {
+      struct stat st;
+      if (stat(args.shmem_backend, &st)) {
+        perror("stat()");
         exit(EXIT_FAILURE);
       }
-      ivshmem_mmap_offset = USERNET_IVSHMEM_DEVM_START;
+      ivshmem_size = st.st_size;
+
+      if (!ivshmem_size) {
+        /* Try usernet_ivshmem's way */
+        if (ioctl(ivshmem_memfd, IOCTL_GETSIZE, &ivshmem_size) < 0) {
+          perror("ioctl(IOCTL_GETSIZE)");
+          exit(EXIT_FAILURE);
+        }
+        ivshmem_mmap_offset = IVSHMEM_MMAP_MEM_OFFSET;
+      }
     }
+
     fprintf(stderr, "ivshmem_size == %lu\n", ivshmem_size);
     void *shared_memory = mmap(NULL, ivshmem_size, PROT_READ | PROT_WRITE,
                                MAP_SHARED, ivshmem_memfd, ivshmem_mmap_offset);
@@ -112,6 +120,8 @@ int main(int argc, char *argv[]) {
     passed_memory =
         shared_memory + ivshmem_size - ((args.shmem_index + 1) * args.size);
   } else {
+    /* Use local shared memory. */
+
     fprintf(stderr,
             "No shared memory backend specified; Create anonymous one\n");
     key_t segment_key = ftok("shmem", args.shmem_index);

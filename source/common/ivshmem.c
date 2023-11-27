@@ -18,24 +18,6 @@ void userspace_shm_wait(uint32_t *guard, const uint32_t expect) {
     __pause(); // Optimization for spin loop
 }
 
-void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
-  do
-    if (!ioctl(fd, IOCTL_WAIT, args->shmem_index))
-      return;
-  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
-  perror("ioctl(IOCTL_WAIT)");
-  exit(EXIT_FAILURE);
-}
-void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
-  do
-    if (!ioctl(fd, IOCTL_SIGNAL,
-               IVSHMEM_DOORBELL_MSG(args->peer_id, args->shmem_index)))
-      return;
-  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
-  perror("ioctl(IOCTL_RING)");
-  exit(EXIT_FAILURE);
-}
-
 void uio_wait(int fd, uint32_t *guard, uint32_t expect,
               struct ivshmem_reg *reg_ptr, struct IvshmemArgs *args) {
   int ret;
@@ -55,10 +37,27 @@ void uio_wait(int fd, uint32_t *guard, uint32_t expect,
 }
 void uio_notify(uint32_t *guard, uint32_t expect, struct ivshmem_reg *reg_ptr,
                 struct IvshmemArgs *args) {
-  /* Post the memory update first */
+  /* Post the memory update first. */
   userspace_shm_notify(guard, expect);
-  /* Then, send interrupt */
+  /* Then, send interrupt. */
   reg_ptr->doorbell = IVSHMEM_DOORBELL_MSG(args->peer_id, 0);
+}
+
+void usernet_intr_wait(int fd, struct IvshmemArgs *args) {
+  do
+    if (!ioctl(fd, IOCTL_WAIT, -1))
+      return;
+  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
+  perror("ioctl(IOCTL_WAIT)");
+  exit(EXIT_FAILURE);
+}
+void usernet_intr_notify(int fd, struct IvshmemArgs *args) {
+  do
+    if (!ioctl(fd, IOCTL_SIGNAL, -1))
+      return;
+  while (likely(((errno == EAGAIN) && args->is_nonblock) || (errno == EINTR)));
+  perror("ioctl(IOCTL_SIGNAL)");
+  exit(EXIT_FAILURE);
 }
 
 static void ivshmem_usage(const char *progname) {
@@ -67,6 +66,7 @@ static void ivshmem_usage(const char *progname) {
          "  -c <count> (default is %d)\n"
          "  -I <intr_dev_path>\n"
          "  -M <mem_dev_path>\n"
+         "  -S <mem_size_force>\n"
          "  -A <peer_address>\n"
          "  -i <shmem_index> (default is 0)\n"
          "  -R: Reset previous interrupts (default is `false`)"
@@ -82,6 +82,7 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
 
   args->intr_dev_path = NULL;
   args->mem_dev_path = NULL;
+  args->mem_size_force = 0;
 
   args->peer_id = -1;
 
@@ -107,6 +108,9 @@ void ivshmem_parse_args(IvshmemArgs *args, int argc, char *argv[]) {
       break;
     case 'M': /* Memory device path */
       args->mem_dev_path = optarg;
+      break;
+    case 'S':
+      args->mem_size_force = strtoul(optarg, NULL, 10);
       break;
 
     case 'A': /* Peer's device ID */
