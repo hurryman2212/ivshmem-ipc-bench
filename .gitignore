@@ -1,15 +1,17 @@
 *
 !.gitignore
 !LICENSE
-
-# CMake
 !CMakeLists.txt
 
-# Shell
 !*.sh
 
 !source
 !source/**/
-
-!uio_ivshmem
-!uio_ivshmem/**/
+!source/**/*.c
+!source/**/*.cc
+!source/**/*.cpp
+!source/**/*.cxx
+!source/**/*.h
+!source/**/*.hh
+!source/**/*.hpp
+!source/**/*.hxx
